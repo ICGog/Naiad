@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="12.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <Import Project="..\packages\Microsoft.Research.Peloponnese.AzureStorage.0.8.1-beta\build\Microsoft.Research.Peloponnese.AzureStorage.props" Condition="Exists('..\packages\Microsoft.Research.Peloponnese.AzureStorage.0.8.1-beta\build\Microsoft.Research.Peloponnese.AzureStorage.props')" />
   <Import Project="..\packages\Microsoft.Research.Peloponnese.Utils.0.8.1-beta\build\Microsoft.Research.Peloponnese.Utils.props" Condition="Exists('..\packages\Microsoft.Research.Peloponnese.Utils.0.8.1-beta\build\Microsoft.Research.Peloponnese.Utils.props')" />
@@ -128,7 +128,7 @@
       <Project>{bdc6546c-7ba0-472b-b260-0d596b6152e4}</Project>
       <Name>Lindi</Name>
     </ProjectReference>
-    <ProjectReference Include="..\frameworks\Storage\Storage.csproj">
+    <ProjectReference Include="..\Frameworks\Storage\Storage.csproj">
       <Project>{0dca9543-ff9d-48d6-9748-a966dc39c35d}</Project>
       <Name>Storage</Name>
     </ProjectReference>
