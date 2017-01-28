@@ -44,7 +44,6 @@
 
   <PropertyGroup>
     <StageArtifactsDependsOn>
-      _GetDeploymentProjectContent;
       _CalculateContentOutputRelativePaths;
       _GetReferencedProjectsOutput;
       _CalculateArtifactStagingDirectory;
@@ -55,12 +54,6 @@
   <Target Name="_CopyOutputToArtifactStagingDirectory">
     <Copy SourceFiles="@(DeploymentProjectContentOutput)" DestinationFiles="$(ArtifactStagingDirectory)\$(MSBuildProjectName)%(RelativePath)" />
     <Copy SourceFiles="@(BuildProjectReferencesOutput)" DestinationFiles="$(ArtifactStagingDirectory)%(ProjectName)\%(RecursiveDir)%(FileName)%(Extension)" />
-  </Target>
-
-  <Target Name="_GetDeploymentProjectContent">
-    <MSBuild Projects="$(MSBuildProjectFile)" Targets="ContentFilesProjectOutputGroup">
-      <Output TaskParameter="TargetOutputs" ItemName="DeploymentProjectContentOutput" />
-    </MSBuild>
   </Target>
 
   <Target Name="_GetReferencedProjectsOutput">
