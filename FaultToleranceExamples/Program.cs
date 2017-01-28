@@ -106,10 +106,6 @@ namespace FaultToleranceExamples
             Program.PartitionedActionVertex<R>.PartitionedActionStage(stream, action);
         }
 
-        public static void PartitionedActionStage(this Stream<int, Epoch> stream, Action action)
-        {
-            Program.PartitionedActionVertex.PartitionedActionStage(stream, action);
-        }
     }
 
     public class Program
