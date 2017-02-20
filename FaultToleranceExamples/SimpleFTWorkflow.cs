@@ -75,7 +75,6 @@ namespace FaultToleranceExamples.SimpleFTWorkflow
       public override void OnReceive2(Message<TKey, Epoch> message)
       {
         var output = this.Output.GetBufferForTime(message.time);
-
         for (int i = 0; i < message.length; i++)
         {
           var key = message.payload[i];
@@ -169,9 +168,15 @@ namespace FaultToleranceExamples.SimpleFTWorkflow
         var keyvals = new BatchedDataSource<Pair<string, string>>();
         var queries = new BatchedDataSource<string>();
 
-        computation.NewInput(keyvals)
-          .SimpleFTWorkflow(computation.NewInput(queries))
+        var simpleFTStage = computation.NewInput(keyvals)
+          .SimpleFTWorkflow(computation.NewInput(queries));
+        simpleFTStage
           .Subscribe(list => { foreach (var l in list) Console.WriteLine("value[\"{0}\"]:\t\"{1}\"", l.First, l.Second); });
+
+        if (this.config.ProcessID == 0)
+        {
+          manager.Initialize(computation, new int[] {simpleFTStage.ForStage.StageId}, this.config.WorkerCount, true);
+        }
 
         computation.Activate();
 
