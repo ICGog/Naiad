@@ -765,7 +765,7 @@ namespace FaultToleranceExamples.ComplexFTWorkflow
 
             private IEnumerable<Record> MakeBatch(int count)
             {
-                long ms = program.computation.TicksSinceStartup / TimeSpan.TicksPerMillisecond;
+                long ms = computation.TicksSinceStartup / TimeSpan.TicksPerMillisecond;
                 for (int i=0; i<count; ++i)
                 {
                     yield return new Record
@@ -845,7 +845,7 @@ namespace FaultToleranceExamples.ComplexFTWorkflow
 
             public void ReleaseOutputs(Pointstamp time)
             {
-                long doneMs = program.computation.TicksSinceStartup / TimeSpan.TicksPerMillisecond;
+                long doneMs = computation.TicksSinceStartup / TimeSpan.TicksPerMillisecond;
 
                 Console.WriteLine("Releasing records up to " + time);
 
@@ -1811,7 +1811,6 @@ namespace FaultToleranceExamples.ComplexFTWorkflow
 #endif
 #endif
 
-        static private ComplexFTWorkflow program;
         private Computation computation;
         private SlowPipeline slow;
         private CCPipeline cc;
@@ -1867,7 +1866,7 @@ namespace FaultToleranceExamples.ComplexFTWorkflow
             bool minimalLogging = false;
             int debugProcess = -1;
             int failureIntervalSecs = 15;
-            int i = 0;
+            int i = 1;
             while (i < args.Length)
             {
                 switch (args[i].ToLower())
