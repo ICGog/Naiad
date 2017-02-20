@@ -1763,7 +1763,7 @@ namespace FaultToleranceExamples.ComplexFTWorkflow
         static private int htInitialBatches = 100;
         static private int htSleepTime = 1000;
 #else
-#if true
+#if false
         static private int slowBase = 0;
         static private int slowRange = 1;
         static private int ccBase = 1;
@@ -1891,6 +1891,46 @@ namespace FaultToleranceExamples.ComplexFTWorkflow
                         i += 2;
                         break;
 
+                    case "-numberofkeys":
+                        numberOfKeys = Int32.Parse(args[i + 1]);
+                        i += 2;
+                        break;
+
+                    case "-fastbatchsize":
+                        fastBatchSize = Int32.Parse(args[i + 1]);
+                        i += 2;
+                        break;
+
+                    case "-fastsleeptime":
+                        fastSleepTime = Int32.Parse(args[i + 1]);
+                        i += 2;
+                        break;
+
+                    case "-ccbatchtime":
+                        ccBatchTime = Int32.Parse(args[i + 1]);
+                        i += 2;
+                        break;
+
+                    case "-slowbatchtime":
+                        slowBatchTime = Int32.Parse(args[i + 1]);
+                        i += 2;
+                        break;
+
+                    case "-htbatchsize":
+                        htBatchSize = Int32.Parse(args[i + 1]);
+                        i += 2;
+                        break;
+
+                    case "-htsleeptime":
+                        htSleepTime = Int32.Parse(args[i + 1]);
+                        i += 2;
+                        break;
+
+                    case "-htinitialbatches":
+                        htInitialBatches = Int32.Parse(args[i + 1]);
+                        i += 2;
+                        break;
+
                     case "-big":
                         numberOfKeys = 1000;
                         htBatchSize = 20;
@@ -1905,14 +1945,34 @@ namespace FaultToleranceExamples.ComplexFTWorkflow
                         ++i;
                         break;
 
-                    case "-sizes":
-                        slowBase = 1;
+                    case "-slowbase":
+                        slowBase = Int32.Parse(args[i + 1]);
+                        i += 2;
+                        break;
+
+                    case "-slowrange":
                         slowRange = Int32.Parse(args[i + 1]);
-                        ccBase = slowBase + slowRange;
-                        ccRange = Int32.Parse(args[i + 2]);
-                        fpBase = ccBase + ccRange;
-                        fpRange = Int32.Parse(args[i + 3]);
-                        i += 4;
+                        i += 2;
+                        break;
+
+                    case "-ccbase":
+                        ccBase = Int32.Parse(args[i + 1]);
+                        i += 2;
+                        break;
+
+                   case "-ccrange":
+                        ccRange = Int32.Parse(args[i + 1]);
+                        i += 2;
+                        break;
+
+                   case "-fpbase":
+                        fpBase = Int32.Parse(args[i + 1]);
+                        i += 2;
+                        break;
+
+                   case "-fprange":
+                        fpRange = Int32.Parse(args[i + 1]);
+                        i += 2;
                         break;
 
                     case "-log":
