@@ -1159,12 +1159,14 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
                         case State.PreparingForRollback:
                             if (changes == null && this.pendingUpdates.Count == 0)
                             {
+                                this.WriteLog("ReactToFrontiers: null changes, 0 pendingUpdates");
                                 // there's nothing more to do, so indicate that there is no computation in progress
                                 this.pendingUpdates = null;
                                 return;
                             }
                             else
                             {
+                                this.WriteLog("ReactToFrontiers: changes or pendingUpdates");
                                 // get hold of any updates that were sent in while we were computing
                                 queuedUpdates = this.pendingUpdates;
                                 // make sure subsequent updates continue to get queued
@@ -1175,6 +1177,7 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
                         case State.DrainingForRollback:
                             if (changes == null && this.pendingUpdates.Count == 0)
                             {
+                                this.WriteLog("ReactToFrontiers: DrainingForRollback null changes, 0 pendingUpdates");
                                 // there's nothing more to do, so start the rollback computation
                                 this.WriteLog("START ROLLBACK");
                                 this.state = State.AddedTemporaryForRollback;
@@ -1183,6 +1186,7 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
                             }
                             else
                             {
+                                this.WriteLog("ReactToFrontiers: DrainingForRollback changes or pendingUpdates");
                                 // get hold of any updates that were sent in while we were computing
                                 queuedUpdates = this.pendingUpdates;
                                 // make sure subsequent updates continue to get queued
@@ -1232,10 +1236,11 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
                     case State.DrainingForRollback:
                         if (this.InjectUpdates(queuedUpdates, changes, currentState != State.DrainingForRollback))
                         {
+                            this.WriteLog("ReactToFrontiers: with updates");
                             // we started a new computation, so we don't need to do any more here
                             return;
                         }
-
+                          this.WriteLog("ReactToFrontiers: without updates");
                         // we didn't start a new computation so go around the loop in case somebody added a new pending
                         // update in the meantime
                         changes = null;
@@ -1433,12 +1438,14 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
                 }
                 if (this.pendingUpdates == null)
                 {
+                    this.WriteLog("ComputeRollback: pendingUpdates null");
                     // there is no computation, so we have to start it ourselves
                     this.state = State.AddedTemporaryForRollback;
                     mustStart = true;
                 }
                 else
                 {
+                    this.WriteLog("ComputeRollback: pendingUpdates non-null");
                     // there is a computation going on: tell it to start the rollback when it finishes
                     this.state = State.DrainingForRollback;
                 }
@@ -1450,6 +1457,7 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
 
             if (mustStart)
             {
+                this.WriteLog("ComputeRollback: InjectUpdates");
                 bool didAnything = this.InjectUpdates(this.temporaryUpdates, null, false);
                 if (!didAnything)
                 {
@@ -1457,6 +1465,7 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
                 }
             }
 
+            this.WriteLog("ComputeRollback: pre barrier");
             barrier.Wait();
 
             this.WriteLog("ROLLBACK COMPLETE");
