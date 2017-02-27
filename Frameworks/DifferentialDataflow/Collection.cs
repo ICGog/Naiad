@@ -248,6 +248,11 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow
             return this.Manufacture<R2>((i, v) => new Operators.Select<R, T, R2>(i, v, selector), null, null, false, "Select");
         }
 
+        public Collection<R, T> Print()
+        {
+          return this.Manufacture<R>((i, v) => new Operators.Print<R, T>(i, v), null, null, false, "Print");
+        }
+
         public Collection<R, T> Where(Expression<Func<R, bool>> predicate)
         {
             if (predicate == null)

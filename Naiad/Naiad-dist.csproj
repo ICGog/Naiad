@@ -107,6 +107,7 @@
     <Compile Include="Operators\Min.cs" />
     <Compile Include="Operators\FixedPoint.cs" />
     <Compile Include="ExtensionMethods.cs" />
+    <Compile Include="Operators\Print.cs" />
     <Compile Include="Operators\Prioritize.cs" />
     <Compile Include="Operators\Sum.cs" />
     <Compile Include="Scheduling\Reachability.cs" />
