@@ -81,25 +81,25 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
 
     internal struct LexStamp// : IEquatable<LexStamp>, IComparable<LexStamp>
     {
-        public int value;
-        private const int ABITS = 10;
+        public long value;
+        private const int ABITS = 21;
         private const int AMAX = (1 << ABITS) - 1;
-        private const int BBITS = 10;
+        private const int BBITS = 21;
         private const int BMAX = (1 << BBITS) - 1;
-        private const int CBITS = 11;
+        private const int CBITS = 21;
         private const int CMAX = (1 << CBITS) - 1;
-        private const int AMASK = AMAX << (BBITS + CBITS);
-        private const int BMASK = BMAX << CBITS;
-        private const int CMASK = CMAX;
-        private int a { get { return value >> (BBITS + CBITS); } }
-        private int b { get { return (value & BMASK) >> CBITS; } }
-        private int c { get { return value & CMASK; } }
+        private const long AMASK = (long)AMAX << (BBITS + CBITS);
+        private const long BMASK = (long)BMAX << CBITS;
+        private const long CMASK = (long)CMAX;
+        private int a { get { return (int)(value >> (BBITS + CBITS)); } }
+        private int b { get { return (int)((value & BMASK) >> CBITS); } }
+        private int c { get { return (int)(value & CMASK); } }
 
-        private void IncrementA(int inc)
+        private void IncrementA(long inc)
         {
             value += (inc << (BBITS + CBITS));
         }
-        private void DecrementA(int dec)
+        private void DecrementA(long dec)
         {
             value -= (dec << (BBITS + CBITS));
         }
@@ -111,11 +111,11 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
         {
             value &= (~AMASK);
         }
-        private void IncrementB(int inc)
+        private void IncrementB(long inc)
         {
             value += (inc << CBITS);
         }
-        private void DecrementB(int dec)
+        private void DecrementB(long dec)
         {
             value -= (dec << CBITS);
         }
@@ -127,11 +127,11 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
         {
             value &= (~BMASK);
         }
-        private void IncrementC(int inc)
+        private void IncrementC(long inc)
         {
             value += inc;
         }
-        private void DecrementC(int dec)
+        private void DecrementC(long dec)
         {
             value -= dec;
         }
@@ -180,20 +180,20 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
             if (stamp.Timestamp.Length == 1)
             {
                 int aVal = Clip(stamp.Timestamp[0], AMAX);
-                value = aVal << (BBITS + CBITS);
+                value = (long)aVal << (BBITS + CBITS);
             }
             else if (stamp.Timestamp.Length == 2)
             {
                 int aVal = Clip(stamp.Timestamp[0], AMAX);
                 int bVal = Clip(stamp.Timestamp[1], BMAX);
-                value = (aVal << (BBITS + CBITS)) + (bVal << CBITS);
+                value = ((long)aVal << (BBITS + CBITS)) + ((long)bVal << CBITS);
             }
             else if (stamp.Timestamp.Length == 3)
             {
                 int aVal = Clip(stamp.Timestamp[0], AMAX);
                 int bVal = Clip(stamp.Timestamp[1], BMAX);
                 int cVal = Clip(stamp.Timestamp[2], CMAX);
-                value = (aVal << (BBITS + CBITS)) + (bVal << CBITS) + cVal;
+                value = ((long)aVal << (BBITS + CBITS)) + ((long)bVal << CBITS) + (long)cVal;
             }
             else
             {
@@ -209,7 +209,7 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
             }
             else if (frontier.Complete)
             {
-                value = Int32.MaxValue;
+                value = Int64.MaxValue;
             }
             else
             {
@@ -219,7 +219,7 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
         }
 
         public bool Empty { get { return value < 0; } }
-        public bool Complete { get { return value == Int32.MaxValue; } }
+        public bool Complete { get { return value == Int64.MaxValue; } }
 
         private void IncrementLexicographically(int length)
         {
@@ -458,7 +458,7 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
 
         public override int GetHashCode()
         {
-            return a + b + c;
+            return a + 1234347 * b + 4311 * c;
         }
 
         public override string ToString()
@@ -635,15 +635,15 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
             }
         }
 
-        private static UInt64 PruneKey(DiscardedMessage m)
-        {
-            return
-                (((UInt64)m.dstDenseStage) << 48) +
-                (((UInt64)m.src.denseId) << 32) +
-                ((m.dstTime.value < 0) ?
-                    (UInt64)0xffffffff :
-                    (UInt64)m.dstTime.value);
-        }
+        // private static UInt64 PruneKey(DiscardedMessage m)
+        // {
+        //     return
+        //         (((UInt64)m.dstDenseStage) << 48) +
+        //         (((UInt64)m.src.denseId) << 32) +
+        //         ((m.dstTime.value < 0) ?
+        //             (UInt64)0xffffffff :
+        //             (UInt64)m.dstTime.value);
+        // }
 
         public static Collection<Frontier, T> ReduceForDiscarded<T>(
             this Collection<Frontier, T> frontiers,
@@ -685,14 +685,14 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
                     new Frontier(c.node, c.checkpoint, true) });
         }
 
-        private static UInt64 StageFrontierKey(Pair<Pair<int, SV>, LexStamp> sf)
+        private static Pair<UInt64, UInt64> StageFrontierKey(Pair<Pair<int, SV>, LexStamp> sf)
         {
-            return
-                (((UInt64)sf.First.First) << 48) +
-                (((UInt64)sf.First.Second.denseId) << 32) +
-                ((sf.Second.value < 0) ?
-                    (UInt64)0xffffffff :
-                    (UInt64)sf.Second.value);
+          UInt64 stages = (((UInt64)sf.First.First) << 48) +
+            (((UInt64)sf.First.Second.denseId) << 32);
+          UInt64 value = (sf.Second.value < 0) ?
+            (UInt64)0xffffffffffffffff :
+            (UInt64)sf.Second.value;
+          return stages.PairWith(value);
         }
 
         private static int EdgeKey(Pair<int, SV> edge)
