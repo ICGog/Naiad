@@ -945,6 +945,11 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
 
                 this.WriteLog("START");
 
+                this.WriteLog("Stats: " + checkpointChanges.Count + " " +
+                              notificationChanges.Count + " " +
+                              deliveredMessageChanges.Count + " " +
+                              discardedMessageChanges.Count);
+
                 this.checkpointStream.OnNext(checkpointChanges);
                 this.deliveredNotifications.OnNext(notificationChanges);
                 this.deliveredMessages.OnNext(deliveredMessageChanges);

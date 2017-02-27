@@ -721,6 +721,8 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
                 // keep only the lowest projected frontier from each src stage
                 .Min(f => StageFrontierKey(f), f => f.Second.value);
 
+            projectedMessageFrontiers.Print();
+
             Collection<Pair<SV,LexStamp>,T> staleDeliveredMessages = deliveredMessageTimes
                 //// make sure messages are unique
                 //.Distinct()
