@@ -192,7 +192,8 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow
         Collection<TOutput, TTime> Select<TOutput>(Expression<Func<TRecord, TOutput>> selector)
             where TOutput : IEquatable<TOutput>;
 
-        Collection<TRecord, TTime> Print();
+        Collection<TRecord, TTime> Print(string name,
+                                         System.Diagnostics.Stopwatch stopwatch);
 
         /// <summary>
         /// Filters the collection to contain only records that match the given <paramref name="predicate"/>.

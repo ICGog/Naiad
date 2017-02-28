@@ -153,7 +153,7 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
         }
 
         private Func<string, LogStream> logStreamFactory;
-        private System.Diagnostics.Stopwatch stopwatch;
+        public System.Diagnostics.Stopwatch stopwatch;
         private LogStream checkpointLog = null;
         internal LogStream CheckpointLog
         {

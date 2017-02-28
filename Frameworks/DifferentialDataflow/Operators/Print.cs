@@ -34,9 +34,12 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.Operators
     {
 
         Dictionary<T, int> NumRecs;
+        string Name;
+        System.Diagnostics.Stopwatch stopwatch;
 
         public override void OnReceive(Message<Weighted<S>, T> message)
         {
+            this.NotifyAt(message.time);
             var output = this.Output.GetBufferForTime(message.time);
             for (int i = 0; i < message.length; i++)
             {
@@ -55,13 +58,18 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.Operators
 
         public override void OnNotify(T workTime)
         {
-          Console.WriteLine("Total events at time " + workTime + " is " + NumRecs[workTime]);
+          long microseconds = this.stopwatch.ElapsedTicks * 1000000L / System.Diagnostics.Stopwatch.Frequency;
+          Console.WriteLine(String.Format("{0:D11}: {1} total events at time {2} is {3}",
+                                          microseconds, Name, workTime, NumRecs[workTime]));
           base.OnNotify(workTime);
         }
 
-        public Print(int index, Stage<T> collection) : base(index, collection)
+        public Print(int index, Stage<T> collection, string name,
+                     System.Diagnostics.Stopwatch stopwatch) : base(index, collection)
         {
             this.NumRecs = new Dictionary<T, int>();
+            this.Name = name;
+            this.stopwatch = stopwatch;
         }
     }
 }
