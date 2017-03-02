@@ -39,6 +39,7 @@ using Microsoft.Research.Naiad.Dataflow.StandardVertices;
 using Microsoft.Research.Naiad.Runtime.Progress;
 using Microsoft.Research.Naiad.Runtime.FaultTolerance;
 using Microsoft.Research.Naiad.FaultToleranceManager;
+using Microsoft.Research.Naiad.Serialization;
 
 using Microsoft.Research.Naiad.Examples.DifferentialDataflow;
 
@@ -1998,7 +1999,18 @@ namespace FaultToleranceExamples.ComplexFTWorkflow
             System.IO.Directory.CreateDirectory(logPrefix);
             this.config.LogStreamFactory = (s => new FileLogStream(logPrefix, s));
 
-            FTManager manager = new FTManager(this.config.LogStreamFactory);
+            SerializationFormat serFormat =
+              SerializationFactory.GetCodeGeneratorForVersion(this.config.SerializerVersion.First,
+                                                              this.config.SerializerVersion.Second);
+            // TODO(ionel): I should close the streams and the writers.
+            FileStream onNextStream = File.Create("/tmp/falkirk/onNext.log");
+            FileStream onNextGraphStream = File.Create("/tmp/falkirk/onNextGraph.log");
+            NaiadWriter onNextWriter = new NaiadWriter(onNextStream, serFormat);
+            NaiadWriter onNextGraphWriter = new NaiadWriter(onNextGraphStream, serFormat);
+
+            FTManager manager = new FTManager(this.config.LogStreamFactory,
+                                              onNextWriter,
+                                              onNextGraphWriter);
 
             if (useAzure)
             {

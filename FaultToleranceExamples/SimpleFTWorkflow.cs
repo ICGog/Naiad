@@ -157,7 +157,7 @@ namespace FaultToleranceExamples.SimpleFTWorkflow
 
       System.IO.Directory.CreateDirectory(logPrefix);
       this.config.LogStreamFactory = (s => new FileLogStream(logPrefix, s));
-      FTManager manager = new FTManager(this.config.LogStreamFactory);
+      FTManager manager = new FTManager(this.config.LogStreamFactory, null, null);
       System.IO.Directory.CreateDirectory(Path.Combine(logPrefix, "checkpoint"));
       this.config.CheckpointingFactory = s => new FileStreamSequence(Path.Combine(logPrefix, "checkpoint"), s);
       this.config.DefaultCheckpointInterval = 1000;

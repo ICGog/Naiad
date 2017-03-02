@@ -387,7 +387,7 @@ namespace Microsoft.Research.Naiad.Serialization
         protected abstract AutoSerialization.SerializationCodeGeneratorForType GetCodeGeneratorForType(Type t, int minorVersion);
     }
 
-    internal static class SerializationFactory
+    public static class SerializationFactory
     {
         public static SerializationFormat GetCodeGeneratorForVersion(int majorVersion, int minorVersion)
         {

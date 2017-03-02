@@ -58,6 +58,7 @@ namespace FaultToleranceExamples
       var examples = new Dictionary<string, Example>();
       examples.Add("complex-ft-workflow", new ComplexFTWorkflow.ComplexFTWorkflow());
       examples.Add("simple-ft-workflow", new SimpleFTWorkflow.SimpleFTWorkflow());
+      examples.Add("replay-complex-ft-workflow", new ReplayComplexFTWorkflow.ReplayComplexFTWorkflow());
       if (args.Length == 0 || !examples.ContainsKey(args[0].ToLower()))
       {
         Console.Error.WriteLine("First argument not found in list of examples");

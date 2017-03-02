@@ -289,7 +289,7 @@ namespace Microsoft.Research.Naiad
         /// <summary>
         /// Version information about serialization format
         /// </summary>
-        internal Pair<int, int> SerializerVersion { get { return this.serializerVersion; } set { this.serializerVersion = value; } }
+        public Pair<int, int> SerializerVersion { get { return this.serializerVersion; } set { this.serializerVersion = value; } }
         private Pair<int, int> serializerVersion = new Pair<int, int>(2, 2);
 
         /// <summary>

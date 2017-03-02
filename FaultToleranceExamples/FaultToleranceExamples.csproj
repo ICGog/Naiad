@@ -102,6 +102,7 @@
     <Compile Include="AzureStreamSequence.cs" />
     <Compile Include="ComplexFTWorkflow.cs" />
     <Compile Include="Program.cs" />
+    <Compile Include="ReplayComplexFTWorkflow.cs" />
     <Compile Include="SimpleFTWorkflow.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>

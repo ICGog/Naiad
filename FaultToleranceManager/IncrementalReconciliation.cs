@@ -29,10 +29,11 @@ using Microsoft.Research.Naiad.Runtime.FaultTolerance;
 using Microsoft.Research.Naiad.Runtime.Progress;
 using Microsoft.Research.Naiad.Dataflow;
 using Microsoft.Research.Naiad.Dataflow.StandardVertices;
+using Microsoft.Research.Naiad.Serialization;
 
 namespace Microsoft.Research.Naiad.FaultToleranceManager
 {
-    internal struct SV
+    public struct SV
     {
         public int denseId;
         public int DenseStageId { get { return denseId >> 8; } }
@@ -61,9 +62,20 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
         {
             return this.DenseStageId + "." + this.VertexId;
         }
+
+        public void Checkpoint2(NaiadWriter writer)
+        {
+          writer.Write(this.denseId);
+        }
+
+        public void Restore2(NaiadReader reader)
+        {
+          this.denseId = reader.Read<int>();
+        }
+
     }
 
-    internal struct Edge : IEquatable<Edge>
+    public struct Edge : IEquatable<Edge>
     {
         public SV src;
         public SV dst;
@@ -73,13 +85,30 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
             return this.src.denseId == other.src.denseId && this.dst.denseId == other.dst.denseId;
         }
 
+        public override string ToString()
+        {
+          return "(" + this.src + ", " + this.dst + ")";
+        }
+
         public override int GetHashCode()
         {
             return src.GetHashCode() + 123412324 * dst.GetHashCode();
         }
+
+        public void Checkpoint2(NaiadWriter writer)
+        {
+          src.Checkpoint2(writer);
+          dst.Checkpoint2(writer);
+        }
+
+        public void Restore2(NaiadReader reader)
+        {
+          src.Restore2(reader);
+          dst.Restore2(reader);
+        }
     }
 
-    internal struct LexStamp// : IEquatable<LexStamp>, IComparable<LexStamp>
+    public struct LexStamp// : IEquatable<LexStamp>, IComparable<LexStamp>
     {
         public long value;
         private const int ABITS = 21;
@@ -94,6 +123,16 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
         private int a { get { return (int)(value >> (BBITS + CBITS)); } }
         private int b { get { return (int)((value & BMASK) >> CBITS); } }
         private int c { get { return (int)(value & CMASK); } }
+
+        public void Checkpoint2(NaiadWriter writer)
+        {
+          writer.Write(value);
+        }
+
+        public void Restore2(NaiadReader reader)
+        {
+          this.value = reader.Read<long>();
+        }
 
         private void IncrementA(long inc)
         {
@@ -388,6 +427,26 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
             return copy;
         }
 
+        public LexStamp Project(int stageType, int length)
+        {
+          if (stageType == 0)
+          {
+            return this.ProjectIteration(length);
+          }
+          else if (stageType == 1)
+          {
+            return this.ProjectIngress(length);
+          }
+          else if (stageType == 2)
+          {
+            return this.ProjectEgress(length);
+          }
+          else
+          {
+            return this;
+          }
+        }
+
         public LexStamp Project(Dataflow.Stage stage, int length)
         {
             if (stage.IsIterationAdvance)
@@ -467,7 +526,7 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
         }
     }
 
-    internal struct DeliveredMessage : IEquatable<DeliveredMessage>
+    public struct DeliveredMessage : IEquatable<DeliveredMessage>
     {
         public int srcDenseStage;
         public SV dst;
@@ -479,13 +538,33 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
                 dst.denseId == other.dst.denseId && srcDenseStage == other.srcDenseStage && dstTime.value == other.dstTime.value;
         }
 
+        public override string ToString()
+        {
+          return srcDenseStage + " " + dst + " " + dstTime;
+        }
+
         public override int GetHashCode()
         {
             return srcDenseStage + 12436432 * dst.GetHashCode() + 981225 * dstTime.GetHashCode();
         }
+
+        public void Checkpoint2(NaiadWriter writer)
+        {
+          writer.Write(srcDenseStage);
+          dst.Checkpoint2(writer);
+          dstTime.Checkpoint2(writer);
+        }
+
+        public void Restore2(NaiadReader reader)
+        {
+          this.srcDenseStage = reader.Read<int>();
+          this.dst.Restore2(reader);
+          this.dstTime.Restore2(reader);
+        }
+
     }
 
-    internal struct DiscardedMessage : IEquatable<DiscardedMessage>
+    public struct DiscardedMessage : IEquatable<DiscardedMessage>
     {
         public SV src;
         public int dstDenseStage;
@@ -499,13 +578,34 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
                 srcTime.value == other.srcTime.value && dstTime.value == other.dstTime.value;
         }
 
+        public override string ToString()
+        {
+          return src + " " + dstDenseStage + " " + srcTime + " " + dstTime;
+        }
+
         public override int GetHashCode()
         {
             return src.denseId + dstDenseStage + srcTime.GetHashCode() + dstTime.GetHashCode();
         }
+
+        public void Checkpoint2(NaiadWriter writer)
+        {
+          this.src.Checkpoint2(writer);
+          writer.Write(dstDenseStage);
+          this.srcTime.Checkpoint2(writer);
+          this.dstTime.Checkpoint2(writer);
+        }
+
+        public void Restore2(NaiadReader reader)
+        {
+          this.src.Restore2(reader);
+          this.dstDenseStage = reader.Read<int>();
+          this.srcTime.Restore2(reader);
+          this.dstTime.Restore2(reader);
+        }
     }
 
-    internal struct Notification : IEquatable<Notification>
+    public struct Notification : IEquatable<Notification>
     {
         public SV node;
         public LexStamp time;
@@ -516,13 +616,30 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
                 node.denseId == other.node.denseId && time.value == other.time.value;
         }
 
+        public override string ToString()
+        {
+          return node + " " + time;
+        }
+
         public override int GetHashCode()
         {
             return node.denseId + 12436432 * time.GetHashCode();
         }
+
+        public void Checkpoint2(NaiadWriter writer)
+        {
+          this.node.Checkpoint2(writer);
+          this.time.Checkpoint2(writer);
+        }
+
+        public void Restore2(NaiadReader reader)
+        {
+          this.node.Restore2(reader);
+          this.time.Restore2(reader);
+        }
     }
 
-    internal struct Frontier : IEquatable<Frontier>
+    public struct Frontier : IEquatable<Frontier>
     {
         public SV node;
         public LexStamp frontier;
@@ -572,7 +689,7 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
         }
     }
 
-    internal struct Checkpoint : IEquatable<Checkpoint>
+    public struct Checkpoint : IEquatable<Checkpoint>
     {
         public SV node;
         public LexStamp checkpoint;
@@ -592,6 +709,11 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
             this.downwardClosed = downwardClosed;
         }
 
+        public override string ToString()
+        {
+          return node + " " + checkpoint + " " + downwardClosed;
+        }
+
         public bool Equals(Checkpoint other)
         {
             return
@@ -601,6 +723,20 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
         public override int GetHashCode()
         {
             return node.denseId + 12436432 * checkpoint.GetHashCode() + ((downwardClosed) ? 643 : 928);
+        }
+
+        public void Checkpoint2(NaiadWriter writer)
+        {
+          node.Checkpoint2(writer);
+          checkpoint.Checkpoint2(writer);
+          writer.Write(downwardClosed);
+        }
+
+        public void Restore2(NaiadReader reader)
+        {
+          this.node.Restore2(reader);
+          this.checkpoint.Restore2(reader);
+          this.downwardClosed = reader.Read<bool>();
         }
     }
 

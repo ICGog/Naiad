@@ -33,6 +33,7 @@ using Microsoft.Research.Naiad.Runtime.FaultTolerance;
 using Microsoft.Research.Naiad.Runtime.Progress;
 using Microsoft.Research.Naiad.Dataflow;
 using Microsoft.Research.Naiad.Dataflow.StandardVertices;
+using Microsoft.Research.Naiad.Serialization;
 
 namespace Microsoft.Research.Naiad.FaultToleranceManager
 {
@@ -97,9 +98,13 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
     /// </summary>
     public class FTManager
     {
-        public FTManager(Func<string, LogStream> logStreamFactory)
+        public FTManager(Func<string, LogStream> logStreamFactory,
+                         NaiadWriter onNextWriter,
+                         NaiadWriter onNextGraphWriter)
         {
             this.logStreamFactory = logStreamFactory;
+            this.onNextWriter = onNextWriter;
+            this.onNextGraphWriter = onNextGraphWriter;
         }
 
         private List<Stage> denseStages;
@@ -152,6 +157,8 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
             return this.stageFrontiers[stageId].First().Key;
         }
 
+        private NaiadWriter onNextWriter;
+        private NaiadWriter onNextGraphWriter;
         private Func<string, LogStream> logStreamFactory;
         public System.Diagnostics.Stopwatch stopwatch;
         private LogStream checkpointLog = null;
@@ -291,15 +298,60 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
                 this.nodeState[edgeList.First].discardedMessages.Add(edgeList.Second, new DiscardList());
             }
 
-            this.graph.OnNext(args.edges.Select(e => new Edge
+            List<Edge> edges = args.edges.Select(e => new Edge
             {
                 src = new SV(this.toDenseStage[e.First.First], e.First.Second),
                 dst = new SV(this.toDenseStage[e.Second.First], e.Second.Second)
-            }));
+            }).ToList();
+
+            if (this.onNextGraphWriter != null)
+            {
+              onNextGraphWriter.Write(this.denseStages.Count);
+              foreach (Stage stage in this.denseStages)
+              {
+                int stageType = 0;
+                if (stage.IsIterationAdvance)
+                {
+                  stageType = 0;
+                }
+                else if (stage.IsIngress)
+                {
+                  stageType = 1;
+                }
+                else if (stage.IsEgress)
+                {
+                  stageType = 2;
+                }
+                else
+                {
+                  stageType = 3;
+                }
+                onNextGraphWriter.Write(stageType);
+                onNextGraphWriter.Write(stage.DefaultVersion.Timestamp.Length);
+              }
+
+              onNextGraphWriter.Write(edges.Count);
+              foreach (Edge edge in edges)
+              {
+                edge.Checkpoint2(onNextGraphWriter);
+              }
+              onNextGraphWriter.Write(0);
+              onNextGraphWriter.Flush();
+            }
+            this.graph.OnNext(edges);
             this.graph.OnCompleted();
 
-            this.checkpointStream.OnNext(this.InitializeCheckpoints());
+            List<Checkpoint> checkpoints = new List<Checkpoint>();;
+            List<Notification> notificationChanges = new List<Notification>();
+            List<DeliveredMessage> deliveredMessageChanges = new List<DeliveredMessage>();
+            List<DiscardedMessage> discardedMessageChanges = new List<DiscardedMessage>();
 
+            checkpoints.AddRange(this.InitializeCheckpoints());
+
+            LogOnNext(checkpoints, notificationChanges, deliveredMessageChanges,
+                      discardedMessageChanges);
+
+            this.checkpointStream.OnNext(checkpoints);
             this.deliveredMessages.OnNext();
             this.deliveredNotifications.OnNext();
             this.discardedMessages.OnNext();
@@ -950,6 +1002,11 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
                               deliveredMessageChanges.Count + " " +
                               discardedMessageChanges.Count);
 
+                LogWeightedOnNext(checkpointChanges,
+                                  notificationChanges,
+                                  deliveredMessageChanges,
+                                  discardedMessageChanges);
+
                 this.checkpointStream.OnNext(checkpointChanges);
                 this.deliveredNotifications.OnNext(notificationChanges);
                 this.deliveredMessages.OnNext(deliveredMessageChanges);
@@ -984,12 +1041,92 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
                 }
             }
 
+            LogWeightedOnNext(checkpointChanges, notificationChanges,
+                              deliveredMessageChanges, discardedMessageChanges);
+
             this.checkpointStream.OnNext(checkpointChanges);
             this.deliveredNotifications.OnNext(notificationChanges);
             this.deliveredMessages.OnNext(deliveredMessageChanges);
             this.discardedMessages.OnNext(discardedMessageChanges);
 
             ++this.epoch;
+        }
+
+        private void LogOnNext(List<Checkpoint> checkpointChanges,
+                               List<Notification> notificationChanges,
+                               List<DeliveredMessage> deliveredMessageChanges,
+                               List<DiscardedMessage> discardedMessageChanges)
+        {
+          if (this.onNextWriter != null)
+          {
+            onNextWriter.Write(checkpointChanges.Count);
+            foreach (Checkpoint checkpoint in checkpointChanges)
+            {
+              checkpoint.Checkpoint2(onNextWriter);
+            }
+            onNextWriter.Write(notificationChanges.Count);
+            foreach (Notification notif in notificationChanges)
+            {
+              notif.Checkpoint2(onNextWriter);
+            }
+            onNextWriter.Write(deliveredMessageChanges.Count);
+            foreach (DeliveredMessage msgChange in deliveredMessageChanges)
+            {
+              msgChange.Checkpoint2(onNextWriter);
+            }
+            onNextWriter.Write(discardedMessageChanges.Count);
+            foreach (DiscardedMessage discardedMsg in discardedMessageChanges)
+            {
+              discardedMsg.Checkpoint2(onNextWriter);
+            }
+            this.onNextWriter.Flush();
+          }
+        }
+
+        private void LogWeightedOnNext(List<Weighted<Checkpoint>> checkpointChanges,
+                                       List<Weighted<Notification>> notificationChanges,
+                                       List<Weighted<DeliveredMessage>> deliveredMessageChanges,
+                                       List<Weighted<DiscardedMessage>> discardedMessageChanges)
+        {
+          if (this.onNextWriter != null)
+          {
+            onNextWriter.Write(checkpointChanges.Count);
+            foreach (Weighted<Checkpoint> checkpoint in checkpointChanges)
+            {
+              checkpoint.record.Checkpoint2(onNextWriter);
+              onNextWriter.Write(checkpoint.weight);
+            }
+            onNextWriter.Write(notificationChanges.Count);
+            foreach (Weighted<Notification> notif in notificationChanges)
+            {
+              notif.record.Checkpoint2(onNextWriter);
+              onNextWriter.Write(notif.weight);
+            }
+            onNextWriter.Write(deliveredMessageChanges.Count);
+            foreach (Weighted<DeliveredMessage> msgChange in deliveredMessageChanges)
+            {
+              msgChange.record.Checkpoint2(onNextWriter);
+              onNextWriter.Write(msgChange.weight);
+            }
+            onNextWriter.Write(discardedMessageChanges.Count);
+            foreach (Weighted<DiscardedMessage> discardedMsg in discardedMessageChanges)
+            {
+              discardedMsg.record.Checkpoint2(onNextWriter);
+              onNextWriter.Write(discardedMsg.weight);
+            }
+            this.onNextWriter.Flush();
+          }
+        }
+
+        private void LogOnComplete()
+        {
+          if (this.onNextWriter != null)
+          {
+            onNextWriter.Write(0);
+            onNextWriter.Write(0);
+            onNextWriter.Write(0);
+            onNextWriter.Write(0);
+          }
         }
 
         private long numberOfUpdates = 0;
@@ -1392,6 +1529,8 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
                 {
                     finalBarrier.Wait();
                 }
+
+                LogOnComplete();
 
                 this.checkpointStream.OnCompleted();
                 this.deliveredMessages.OnCompleted();
