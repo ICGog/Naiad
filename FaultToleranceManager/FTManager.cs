@@ -1122,10 +1122,10 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
         {
           if (this.onNextWriter != null)
           {
-            onNextWriter.Write(0);
-            onNextWriter.Write(0);
-            onNextWriter.Write(0);
-            onNextWriter.Write(0);
+            onNextWriter.Write(-1);
+            onNextWriter.Write(-1);
+            onNextWriter.Write(-1);
+            onNextWriter.Write(-1);
           }
         }
 

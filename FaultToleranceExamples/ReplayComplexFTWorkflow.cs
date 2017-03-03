@@ -48,7 +48,6 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
 
   internal static class ExtensionMethods
   {
-
     private static Pair<Checkpoint, LexStamp> PairCheckpointToBeLowerThanTime(
       Checkpoint checkpoint, LexStamp time, ReplayComplexFTWorkflow replayWorkflow) {
 
@@ -208,7 +207,7 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
     private List<int> stageLenghts;
     internal List<int> StageLenghts { get {return this.stageLenghts;}}
     private List<int> stageTypes;
-    internal List<int> StageTypes { get {return this.StageTypes;}}
+    internal List<int> StageTypes { get {return this.stageTypes;}}
 
     public string Usage { get { return ""; } }
 
@@ -229,7 +228,6 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
         Checkpoint chpoint = new Checkpoint();
         chpoint.Restore2(reader);
         checkpointChanges.Add(chpoint);
-        Console.WriteLine("AAA: {0}", chpoint);
       }
       int numNotificationChanges = reader.Read<int>();
       for (int i = 0; i < numNotificationChanges; i++)
@@ -237,7 +235,6 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
         Notification notif = new Notification();
         notif.Restore2(reader);
         notificationChanges.Add(notif);
-        Console.WriteLine("BBB: {0}", notif);
       }
       int numDeliveredMessageChanges = reader.Read<int>();
       for (int i = 0; i < numDeliveredMessageChanges; i++)
@@ -245,7 +242,6 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
         DeliveredMessage deliverMsg = new DeliveredMessage();
         deliverMsg.Restore2(reader);
         deliveredMessageChanges.Add(deliverMsg);
-        Console.WriteLine("CCC: {0}", deliverMsg);
       }
       int numDiscardedMessageChanges = reader.Read<int>();
       for (int i = 0; i < numDiscardedMessageChanges; i++)
@@ -253,7 +249,6 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
         DiscardedMessage discardMsg = new DiscardedMessage();
         discardMsg.Restore2(reader);
         discardedMessageChanges.Add(discardMsg);
-        Console.WriteLine("DDD: {0}", discardMsg);
       }
     }
 
@@ -291,10 +286,10 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
         discardMsg.Restore2(reader);
         discardedMessageChanges.Add(new Weighted<DiscardedMessage>(discardMsg, reader.Read<Int64>()));
       }
-      if (numCheckpointChanges == 0 &&
-          numNotificationChanges == 0 &&
-          numDeliveredMessageChanges == 0 &&
-          numDiscardedMessageChanges == 0) {
+      if (numCheckpointChanges == -1 &&
+          numNotificationChanges == -1 &&
+          numDeliveredMessageChanges == -1 &&
+          numDiscardedMessageChanges == -1) {
         return false;
       } else
       {
@@ -306,88 +301,116 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
     {
       this.config = Configuration.FromArgs(ref args);
       this.config.MaxLatticeInternStaleTimes = 10;
+      string onNextGraphFile = "/tmp/falkirk/onNextGraph.log";
+      string onNextFile = "/tmp/falkirk/onNext.log";
+      int curEpoch = 0;
+      int replayNumEpochs = -1;
+      int argIndex = 1;
+      while (argIndex < args.Length)
+      {
+        switch (args[argIndex].ToLower())
+        {
+          case "-onnextgraphfile":
+            onNextGraphFile = args[argIndex + 1];
+            argIndex += 2;
+            break;
+          case "-onnextfile":
+            onNextFile = args[argIndex + 1];
+            argIndex += 2;
+            break;
+          case "-replaynumepochs":
+            replayNumEpochs = Int32.Parse(args[argIndex + 1]);
+            argIndex += 2;
+            break;
+          default:
+            throw new ApplicationException("Unknown argument " + args[argIndex]);
+        }
+      }
 
       this.stageLenghts = new List<int>();
       this.stageTypes = new List<int>();
 
-      using (FileStream stream = File.OpenRead("/tmp/falkirk/onNext.log"))
+      using (var computation = NewComputation.FromConfig(this.config))
       {
+        InputCollection<Edge> graph = computation.NewInputCollection<Edge>();
+        InputCollection<Checkpoint> checkpointStream = computation.NewInputCollection<Checkpoint>();
+        InputCollection<DeliveredMessage> deliveredMessages = computation.NewInputCollection<DeliveredMessage>();
+        InputCollection<Notification> deliveredNotifications = computation.NewInputCollection<Notification>();
+        InputCollection<DiscardedMessage> discardedMessages = computation.NewInputCollection<DiscardedMessage>();
+
+        Collection<Frontier, Epoch> initial = checkpointStream
+          .Max(c => c.node.denseId, c => c.checkpoint.value)
+          .SelectMany(c => new Frontier[] {
+              new Frontier(c.node, c.checkpoint, false),
+              new Frontier(c.node, c.checkpoint, true) });
+
+        var frontiers = initial
+          .FixedPoint((c, f) =>
+            {
+              var reducedDiscards = f
+                .ReduceForDiscarded(
+                  checkpointStream.EnterLoop(c),
+                  discardedMessages.EnterLoop(c), this);
+
+              var reduced = f
+                .Reduce(
+                  checkpointStream.EnterLoop(c), deliveredMessages.EnterLoop(c),
+                  deliveredNotifications.EnterLoop(c), graph.EnterLoop(c),
+                  this);
+
+              return reduced.Concat(reducedDiscards).Concat(f)
+                .Min(ff => (ff.node.denseId + (ff.isNotification ? 0x10000 : 0)), ff => ff.frontier.value);
+            })
+          .Consolidate();
+
+        computation.Activate();
+
+
         SerializationFormat serFormat =
           SerializationFactory.GetCodeGeneratorForVersion(this.config.SerializerVersion.First,
                                                           this.config.SerializerVersion.Second);
-        using (NaiadReader onNextReader = new NaiadReader(stream, serFormat))
+
+        if (this.config.ProcessID == 0)
         {
-          using (var computation = NewComputation.FromConfig(this.config))
+          using (FileStream graphStream = File.OpenRead(onNextGraphFile))
           {
-            InputCollection<Edge> graph = computation.NewInputCollection<Edge>();
-            InputCollection<Checkpoint> checkpointStream = computation.NewInputCollection<Checkpoint>();
-            InputCollection<DeliveredMessage> deliveredMessages = computation.NewInputCollection<DeliveredMessage>();
-            InputCollection<Notification> deliveredNotifications = computation.NewInputCollection<Notification>();
-            InputCollection<DiscardedMessage> discardedMessages = computation.NewInputCollection<DiscardedMessage>();
-
-            Collection<Frontier, Epoch> initial = checkpointStream
-              .Max(c => c.node.denseId, c => c.checkpoint.value)
-              .SelectMany(c => new Frontier[] {
-                  new Frontier(c.node, c.checkpoint, false),
-                  new Frontier(c.node, c.checkpoint, true) });
-
-            var frontiers = initial
-              .FixedPoint((c, f) =>
-              {
-                var reducedDiscards = f
-                    .ReduceForDiscarded(
-                       checkpointStream.EnterLoop(c),
-                       discardedMessages.EnterLoop(c), this);
-
-                var reduced = f
-                    .Reduce(
-                       checkpointStream.EnterLoop(c), deliveredMessages.EnterLoop(c),
-                       deliveredNotifications.EnterLoop(c), graph.EnterLoop(c),
-                       this);
-
-                return reduced.Concat(reducedDiscards).Concat(f)
-                       .Min(ff => (ff.node.denseId + (ff.isNotification ? 0x10000 : 0)), ff => ff.frontier.value);
-              })
-              .Consolidate();
-
-            computation.Activate();
-
-            if (this.config.ProcessID == 0)
+            using (NaiadReader onNextGraphReader = new NaiadReader(graphStream, serFormat))
             {
-              using (FileStream graphStream = File.OpenRead("/tmp/falkirk/onNextGraph.log"))
+              int numStages = onNextGraphReader.Read<int>();
+              for (int i = 0; i < numStages; ++i)
               {
-                using (NaiadReader onNextGraphReader = new NaiadReader(graphStream, serFormat))
+                int stageType = onNextGraphReader.Read<int>();
+                stageTypes.Add(stageType);
+                int stageLength = onNextGraphReader.Read<int>();
+                stageLenghts.Add(stageLength);
+              }
+              while (true)
+              {
+                int count = onNextGraphReader.Read<int>();
+                if (count == 0)
                 {
-                  int numStages = onNextGraphReader.Read<int>();
-                  for (int i = 0; i < numStages; ++i)
-                  {
-                    int stageType = onNextGraphReader.Read<int>();
-                    stageTypes.Add(stageType);
-                    int stageLength = onNextGraphReader.Read<int>();
-                    stageLenghts.Add(stageLength);
-                  }
-                  while (true)
-                  {
-                    int count = onNextGraphReader.Read<int>();
-                    if (count == 0)
-                    {
-                      break;
-                    }
-                    List<Edge> edges = new List<Edge>();
-                    for (int i = 0; i < count; i++)
-                    {
-                      Edge edge = new Edge();
-                      edge.Restore2(onNextGraphReader);
-                      edges.Add(edge);
-                    }
-                    graph.OnNext(edges);
-                  }
+                  break;
                 }
+                List<Edge> edges = new List<Edge>();
+                for (int i = 0; i < count; i++)
+                {
+                  Edge edge = new Edge();
+                  edge.Restore2(onNextGraphReader);
+                  edges.Add(edge);
+                }
+                graph.OnNext(edges);
               }
             }
-            graph.OnCompleted();
+          }
+        }
 
-            if (this.config.ProcessID == 0)
+        graph.OnCompleted();
+
+        if (this.config.ProcessID == 0)
+        {
+          using (FileStream stream = File.OpenRead(onNextFile))
+          {
+            using (NaiadReader onNextReader = new NaiadReader(stream, serFormat))
             {
               List<Checkpoint> initCheckpointChanges = new List<Checkpoint>();
               List<Notification> initNotificationChanges = new List<Notification>();
@@ -403,9 +426,9 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
               deliveredNotifications.OnNext(initNotificationChanges);
               deliveredMessages.OnNext(initDeliveredMessageChanges);
               discardedMessages.OnNext(initDiscardedMessageChanges);
+              curEpoch++;
 
-              int epoch = 1;
-              while (true)
+              while (curEpoch < replayNumEpochs)
               {
                 List<Weighted<Checkpoint>> checkpointChanges = new List<Weighted<Checkpoint>>();
                 List<Weighted<Notification>> notificationChanges = new List<Weighted<Notification>>();
@@ -435,29 +458,26 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
                   // {
                   //   Console.WriteLine("DDD: {0}", dsgMsg);
                   // }
+
                   checkpointStream.OnNext(checkpointChanges);
                   deliveredNotifications.OnNext(notificationChanges);
                   deliveredMessages.OnNext(deliveredMessageChanges);
                   discardedMessages.OnNext(discardedMessageChanges);
-                  epoch++;
-                  if (epoch == 10)
-                  {
-                    break;
-                  }
+                  curEpoch++;
                 } else
                 {
                   break;
                 }
               }
             }
-
-            checkpointStream.OnCompleted();
-            deliveredMessages.OnCompleted();
-            deliveredNotifications.OnCompleted();
-            discardedMessages.OnCompleted();
-
-            computation.Join();
           }
+
+          checkpointStream.OnCompleted();
+          deliveredMessages.OnCompleted();
+          deliveredNotifications.OnCompleted();
+          discardedMessages.OnCompleted();
+
+          computation.Join();
         }
       }
     }
