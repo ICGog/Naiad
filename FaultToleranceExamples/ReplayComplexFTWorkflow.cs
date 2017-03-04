@@ -343,7 +343,7 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
           .SelectMany(c => new Frontier[] {
               new Frontier(c.node, c.checkpoint, false),
               new Frontier(c.node, c.checkpoint, true) });
-
+        var beginWatch = System.Diagnostics.Stopwatch.StartNew();
         var frontiers = initial
           .FixedPoint((c, f) =>
             {
@@ -351,18 +351,18 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
                 .ReduceForDiscarded(
                   checkpointStream.EnterLoop(c),
                   discardedMessages.EnterLoop(c), this);
-
+//              reducedDiscards.Print("reducedDiscards", beginWatch);
               var reduced = f
                 .Reduce(
                   checkpointStream.EnterLoop(c), deliveredMessages.EnterLoop(c),
                   deliveredNotifications.EnterLoop(c), graph.EnterLoop(c),
                   this);
-
+//              reduced.Print("reduced", beginWatch);
               return reduced.Concat(reducedDiscards).Concat(f)
                 .Min(ff => (ff.node.denseId + (ff.isNotification ? 0x10000 : 0)), ff => ff.frontier.value);
             })
           .Consolidate();
-
+        frontiers.Subscribe(l => { } );
         computation.Activate();
 
 
@@ -426,6 +426,7 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
               deliveredNotifications.OnNext(initNotificationChanges);
               deliveredMessages.OnNext(initDeliveredMessageChanges);
               discardedMessages.OnNext(initDiscardedMessageChanges);
+              computation.Sync(curEpoch);
               curEpoch++;
 
               while (curEpoch < replayNumEpochs)
@@ -458,11 +459,13 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
                   // {
                   //   Console.WriteLine("DDD: {0}", dsgMsg);
                   // }
-
+                  var stopwatch = System.Diagnostics.Stopwatch.StartNew();
                   checkpointStream.OnNext(checkpointChanges);
                   deliveredNotifications.OnNext(notificationChanges);
                   deliveredMessages.OnNext(deliveredMessageChanges);
                   discardedMessages.OnNext(discardedMessageChanges);
+                  computation.Sync(curEpoch);
+                  Console.Error.WriteLine("Time to process epoch {0}: {1} {2} {3} {4} {5}", curEpoch, stopwatch.ElapsedMilliseconds, checkpointChanges.Count, notificationChanges.Count, deliveredMessageChanges.Count, discardedMessageChanges.Count);
                   curEpoch++;
                 } else
                 {
