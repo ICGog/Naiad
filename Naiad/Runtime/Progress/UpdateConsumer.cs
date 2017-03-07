@@ -301,7 +301,7 @@ namespace Microsoft.Research.Naiad.Runtime.Progress
                     w.Write(p + " ");
                 }
                 Console.WriteLine("Getting empty frontier from updates " + w.ToString());
-                throw new ApplicationException("completed from update " + w.ToString());
+               // throw new ApplicationException("completed from update " + w.ToString());
                 //Tracing.Trace("Frontier advanced to <empty>");
                 NaiadTracing.Trace.RefAlignFrontier();
                 this.FrontierEmpty.Set();
