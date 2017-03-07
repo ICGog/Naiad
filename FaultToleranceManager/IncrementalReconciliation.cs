@@ -48,10 +48,10 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
             this.denseId = (Stage << 8) + Vertex;
         }
 
-        //public bool Equals(SV other)
-        //{
-        //    return this.denseId == other.denseId;
-        //}
+        public bool Equals(SV other)
+        {
+           return this.denseId == other.denseId;
+        }
 
         public override int GetHashCode()
         {
@@ -492,10 +492,10 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
             }
         }
 
-        //public bool Equals(LexStamp other)
-        //{
-        //    return this.value == other.value;
-        //}
+        public bool Equals(LexStamp other)
+        {
+           return this.value == other.value;
+        }
 
         public bool Contains(LexStamp stamp)
         {
