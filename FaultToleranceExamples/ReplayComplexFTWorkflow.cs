@@ -297,6 +297,168 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
       }
     }
 
+    HashSet<Checkpoint> checkpointState;
+    HashSet<Notification> notificationState;
+    HashSet<DeliveredMessage> delivMsgState;
+    HashSet<DiscardedMessage> discMsgState;
+
+    private void ApplyInitialDeltas(List<Checkpoint> checkpointChanges,
+                                    List<Notification> notificationChanges,
+                                    List<DeliveredMessage> delivMessageChanges,
+                                    List<DiscardedMessage> discMessageChanges)
+    {
+      foreach (Checkpoint checkpoint in checkpointChanges)
+      {
+        var added = checkpointState.Add(checkpoint);
+        if (added == false)
+        {
+          Console.Error.WriteLine("Already added {0}", checkpoint);
+          Environment.Exit(1);
+        }
+      }
+      foreach (Notification notification in notificationChanges)
+      {
+        var added = notificationState.Add(notification);
+        if (added == false)
+        {
+          Console.Error.WriteLine("Already added {0}", notification);
+          Environment.Exit(1);
+        }
+      }
+      foreach (DeliveredMessage delivMsg in delivMessageChanges)
+      {
+        var added = delivMsgState.Add(delivMsg);
+        if (added == false)
+        {
+          Console.Error.WriteLine("Already added {0}", delivMsg);
+          Environment.Exit(1);
+        }
+      }
+      foreach (DiscardedMessage discMsg in discMessageChanges)
+      {
+        var added = discMsgState.Add(discMsg);
+        if (added == false)
+        {
+          Console.Error.WriteLine("Already added {0}", discMsg);
+          Environment.Exit(1);
+        }
+      }
+    }
+
+    private void ApplyDeltas(List<Weighted<Checkpoint>> checkpointChanges,
+                             List<Weighted<Notification>> notificationChanges,
+                             List<Weighted<DeliveredMessage>> deliveredMessageChanges,
+                             List<Weighted<DiscardedMessage>> discardedMessageChanges)
+    {
+      foreach (Weighted<Checkpoint> checkpoint in checkpointChanges)
+      {
+        if (checkpoint.weight == -1)
+        {
+          var removed = checkpointState.Remove(checkpoint.record);
+          if (removed == false)
+          {
+            Console.Error.WriteLine("checkpoint remove {0}", checkpoint);
+            Environment.Exit(1);
+          }
+        }
+        else if (checkpoint.weight == 1)
+        {
+          var added = checkpointState.Add(checkpoint.record);
+          if (added == false)
+          {
+            Console.Error.WriteLine("checkpoint add {0}", checkpoint);
+            Environment.Exit(1);
+          }
+        }
+        else
+        {
+          Console.Error.WriteLine("Checkpoint weight error. Weight is {0}", checkpoint.weight);
+          Environment.Exit(1);
+        }
+      }
+
+      foreach (Weighted<Notification> notification in notificationChanges)
+      {
+        if (notification.weight == -1)
+        {
+          var removed = notificationState.Remove(notification.record);
+          if (removed == false)
+          {
+            Console.Error.WriteLine("notification removed {0}", notification);
+            Environment.Exit(1);
+          }
+        }
+        else if (notification.weight == 1)
+        {
+          var added = notificationState.Add(notification.record);
+          if (added == false)
+          {
+            Console.Error.WriteLine("notification add {0}", notification);
+            Environment.Exit(1);
+          }
+        }
+        else
+        {
+          Console.Error.WriteLine("notification weight error. Weight is {0}", notification.weight);
+          Environment.Exit(1);
+        }
+      }
+
+      foreach (Weighted<DeliveredMessage> delivMsg in deliveredMessageChanges)
+      {
+        if (delivMsg.weight == -1)
+        {
+          var removed = delivMsgState.Remove(delivMsg.record);
+          if (removed == false)
+          {
+            Console.Error.WriteLine("delivMsg remove {0}", delivMsg);
+            Environment.Exit(1);
+          }
+        }
+        else if (delivMsg.weight == 1)
+        {
+          var added = delivMsgState.Add(delivMsg.record);
+          if (added == false)
+          {
+            Console.Error.WriteLine("delivMsg add {0}", delivMsg);
+            Environment.Exit(1);
+          }
+        }
+        else
+        {
+          Console.Error.WriteLine("delivMsg weight error. Weight is {0}", delivMsg.weight);
+          Environment.Exit(1);
+        }
+      }
+
+      foreach (Weighted<DiscardedMessage> discMsg in discardedMessageChanges)
+      {
+        if (discMsg.weight == -1)
+        {
+          var removed = discMsgState.Remove(discMsg.record);
+          if (removed == false)
+          {
+           Console.Error.WriteLine("discMsg remove {0}", discMsg);
+           Environment.Exit(1);
+          }
+        }
+        else if (discMsg.weight == 1)
+        {
+          var added = discMsgState.Add(discMsg.record);
+          if (added == false)
+          {
+            Console.Error.WriteLine("discMsg add {0}", discMsg);
+            Environment.Exit(1);
+          }
+        }
+        else
+        {
+          Console.Error.WriteLine("discMsg weight error. Weight is {0}", discMsg.weight);
+          Environment.Exit(1);
+        }
+      }
+    }
+
     public void Execute(string[] args)
     {
       this.config = Configuration.FromArgs(ref args);
@@ -329,6 +491,11 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
 
       this.stageLenghts = new List<int>();
       this.stageTypes = new List<int>();
+
+      this.checkpointState = new HashSet<Checkpoint>();
+      this.notificationState = new HashSet<Notification>();
+      this.delivMsgState = new HashSet<DeliveredMessage>();
+      this.discMsgState = new HashSet<DiscardedMessage>();
 
       using (var computation = NewComputation.FromConfig(this.config))
       {
@@ -422,6 +589,11 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
                                 initDeliveredMessageChanges,
                                 initDiscardedMessageChanges);
 
+              // ApplyInitialDeltas(initCheckpointChanges,
+              //                    initNotificationChanges,
+              //                    initDeliveredMessageChanges,
+              //                    initDiscardedMessageChanges);
+
               checkpointStream.OnNext(initCheckpointChanges);
               deliveredNotifications.OnNext(initNotificationChanges);
               deliveredMessages.OnNext(initDeliveredMessageChanges);
@@ -459,6 +631,14 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
                   // {
                   //   Console.WriteLine("DDD: {0}", dsgMsg);
                   // }
+
+                  // ApplyDeltas(checkpointChanges, notificationChanges, deliveredMessageChanges,
+                  //             discardedMessageChanges);
+                  // Console.WriteLine("State {0} {1} {2} {3}",
+                  //                   checkpointState.Count,
+                  //                   notificationState.Count,
+                  //                   delivMsgState.Count,
+                  //                   discMsgState.Count);
                   var stopwatch = System.Diagnostics.Stopwatch.StartNew();
                   checkpointStream.OnNext(checkpointChanges);
                   deliveredNotifications.OnNext(notificationChanges);
