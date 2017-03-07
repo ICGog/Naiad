@@ -24,6 +24,7 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Diagnostics;
 
 using System.Collections.Concurrent;
 
@@ -34,6 +35,7 @@ using Microsoft.Research.Naiad.Runtime.Progress;
 using Microsoft.Research.Naiad.Dataflow;
 using Microsoft.Research.Naiad.Dataflow.StandardVertices;
 using Microsoft.Research.Naiad.Serialization;
+using Microsoft.Research.Naiad.Diagnostics;
 
 namespace Microsoft.Research.Naiad.FaultToleranceManager
 {
@@ -195,6 +197,157 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
             }
         }
 
+        private void ApplyInitialDeltas(List<Checkpoint> checkpoints,
+                                        List<Notification> notifications,
+                                        List<DeliveredMessage> delivMsgs,
+                                        List<DiscardedMessage> discMsgs)
+        {
+          foreach (Checkpoint checkpoint in checkpoints)
+          {
+            var added = checkpointState.Add(checkpoint);
+            if (added == false)
+            {
+              Console.Error.WriteLine("Already exists {0}", checkpoint);
+              Environment.Exit(1);
+            }
+          }
+          foreach (Notification notif in notifications)
+          {
+            var added = notifState.Add(notif);
+            if (added == false)
+            {
+              Console.Error.WriteLine("Already exists {0}", notif);
+              Environment.Exit(1);
+            }
+          }
+          foreach (DeliveredMessage delivMsg in delivMsgs)
+          {
+            var added = delivMsgState.Add(delivMsg);
+            if (added == false)
+            {
+              Console.Error.WriteLine("Already exists {0}", delivMsg);
+              Environment.Exit(1);
+            }
+          }
+          foreach (DiscardedMessage discMsg in discMsgs)
+          {
+            var added = discMsgState.Add(discMsg);
+            if (added == false)
+            {
+              Console.Error.WriteLine("Already exists {0}", discMsg);
+              Environment.Exit(1);
+            }
+          }
+        }
+
+        private void ApplyDeltas(List<Weighted<Checkpoint>> checkpoints,
+                                 List<Weighted<Notification>> notifications,
+                                 List<Weighted<DeliveredMessage>> delivMsgs,
+                                 List<Weighted<DiscardedMessage>> discMsgs)
+        {
+          foreach (Weighted<Checkpoint> checkpoint in checkpoints)
+          {
+            if (checkpoint.weight == 1)
+            {
+              var added = checkpointState.Add(checkpoint.record);
+              if (added == false)
+              {
+                Console.Error.WriteLine("Already exists {0}", checkpoint);
+                Environment.Exit(1);
+              }
+            }
+            else if (checkpoint.weight == -1)
+            {
+              var removed = checkpointState.Remove(checkpoint.record);
+              if (removed == false)
+              {
+                Console.Error.WriteLine("Does not exist {0}", checkpoint);
+                Environment.Exit(1);
+              }
+            }
+            else
+            {
+              Environment.Exit(1);
+            }
+          }
+          foreach (Weighted<Notification> notif in notifications)
+          {
+            if (notif.weight == 1)
+            {
+              var added = notifState.Add(notif.record);
+              if (added == false)
+              {
+                Console.Error.WriteLine("Already exists {0}", notif);
+                Environment.Exit(1);
+              }
+            }
+            else if (notif.weight == -1)
+            {
+              var removed = notifState.Remove(notif.record);
+              if (removed == false)
+              {
+                Console.Error.WriteLine("Does not exist {0}", notif);
+                Environment.Exit(1);
+              }
+            }
+            else
+            {
+              Environment.Exit(1);
+            }
+          }
+          foreach (Weighted<DeliveredMessage> delivMsg in delivMsgs)
+          {
+            if (delivMsg.weight == 1)
+            {
+              var added = delivMsgState.Add(delivMsg.record);
+              if (added == false)
+              {
+                Console.Error.WriteLine("Already exists {0}", delivMsg);
+                Environment.Exit(1);
+              }
+            }
+            else if (delivMsg.weight == -1)
+            {
+              var removed = delivMsgState.Remove(delivMsg.record);
+              if (removed == false)
+              {
+                Console.Error.WriteLine("Does not exist {0}", delivMsg);
+                Environment.Exit(1);
+              }
+            }
+            else
+            {
+              Environment.Exit(1);
+            }
+          }
+          foreach (Weighted<DiscardedMessage> discMsg in discMsgs)
+          {
+            if (discMsg.weight == 1)
+            {
+              var added = discMsgState.Add(discMsg.record);
+              if (added == false)
+              {
+                Console.Error.WriteLine("Already exists {0}", discMsg);
+                Environment.Exit(1);
+              }
+            }
+            else if (discMsg.weight == -1)
+            {
+              var removed = discMsgState.Remove(discMsg.record);
+              if (removed == false)
+              {
+                Console.Error.WriteLine("Does not exist {0}", discMsg);
+                Environment.Exit(1);
+              }
+            }
+            else
+            {
+              Environment.Exit(1);
+            }
+
+          }
+        }
+
         private Computation computation;
 
         private HashSet<int> stagesToMonitor = new HashSet<int>();
@@ -224,6 +377,11 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
         private InputCollection<DeliveredMessage> deliveredMessages;
         private InputCollection<Notification> deliveredNotifications;
         private InputCollection<DiscardedMessage> discardedMessages;
+
+        private HashSet<Checkpoint> checkpointState;
+        private HashSet<DeliveredMessage> delivMsgState;
+        private HashSet<Notification> notifState;
+        private HashSet<DiscardedMessage> discMsgState;
 
         private int epoch = -1;
 
@@ -350,6 +508,16 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
 
             LogOnNext(checkpoints, notificationChanges, deliveredMessageChanges,
                       discardedMessageChanges);
+
+            this.checkpointState = new HashSet<Checkpoint>();
+            this.notifState = new HashSet<Notification>();
+            this.delivMsgState = new HashSet<DeliveredMessage>();
+            this.discMsgState = new HashSet<DiscardedMessage>();
+
+            // ApplyInitialDeltas(checkpoints,
+            //                    notificationChanges,
+            //                    deliveredMessageChanges,
+            //                    discardedMessageChanges);
 
             this.checkpointStream.OnNext(checkpoints);
             this.deliveredMessages.OnNext();
@@ -1006,6 +1174,11 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
                                   notificationChanges,
                                   deliveredMessageChanges,
                                   discardedMessageChanges);
+
+                // ApplyDeltas(checkpointChanges,
+                //             notificationChanges,
+                //             deliveredMessageChanges,
+                //             discardedMessageChanges);
 
                 this.checkpointStream.OnNext(checkpointChanges);
                 this.deliveredNotifications.OnNext(notificationChanges);
