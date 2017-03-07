@@ -857,7 +857,7 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
                 // keep only the lowest projected frontier from each src stage
                 .Min(f => StageFrontierKey(f), f => f.Second.value);
 
-            projectedMessageFrontiers.Print("projectedMessageFrontiers", manager.stopwatch);
+            // projectedMessageFrontiers.Print("projectedMessageFrontiers", manager.stopwatch);
 
             Collection<Pair<SV,LexStamp>,T> staleDeliveredMessages = deliveredMessageTimes
                 //// make sure messages are unique
@@ -872,7 +872,7 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
                 // we only care about the destination node and stale message time
                 .Select(m => m.First.PairWith(m.Second.First));
 
-            staleDeliveredMessages.Print("staleDeliveredMessages", manager.stopwatch);
+            // staleDeliveredMessages.Print("staleDeliveredMessages", manager.stopwatch);
 
             Collection<Frontier, T> intersectedProjectedNotificationFrontiers = frontiers
                 // only look at the notification frontiers
@@ -886,7 +886,7 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
                 // and find the intersection (minimum) of the projections at the destination
                 .Min(f => f.node.denseId, f => f.frontier.value);
 
-            intersectedProjectedNotificationFrontiers.Print("intersectedProjectNotificationFrontiers", manager.stopwatch);
+            // intersectedProjectedNotificationFrontiers.Print("intersectedProjectNotificationFrontiers", manager.stopwatch);
 
             Collection<Pair<SV,LexStamp>,T> staleDeliveredNotifications = deliveredNotificationTimes
                 // match up delivered notifications with the intersected projected notification frontier at the node,
@@ -899,7 +899,7 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
                 // we only care about the node and stale notification time
                 .Select(n => n.First.PairWith(n.Second.First));
 
-            staleDeliveredNotifications.Print("staleDeliveredNotifications", manager.stopwatch);
+            // staleDeliveredNotifications.Print("staleDeliveredNotifications", manager.stopwatch);
 
             Collection<Pair<SV,LexStamp>,T> earliestStaleEvents = staleDeliveredMessages
                 .Concat(staleDeliveredNotifications)
@@ -921,7 +921,7 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
                     new Frontier(c.First.node, c.First.checkpoint, false),
                     new Frontier(c.First.node, c.First.checkpoint, true) });
 
-            reducedFrontiers.Print("reducedFrontiers", manager.stopwatch);
+            // reducedFrontiers.Print("reducedFrontiers", manager.stopwatch);
 
             // return any reduction in either frontier
             return reducedFrontiers.Concat(intersectedProjectedNotificationFrontiers);
