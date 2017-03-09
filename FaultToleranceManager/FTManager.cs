@@ -1,13 +1,13 @@
 /*
  * Naiad ver. 0.6
  * Copyright (c) Microsoft Corporation
- * All rights reserved. 
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License"); 
+ * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0 
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * THIS CODE IS PROVIDED ON AN *AS IS* BASIS, WITHOUT WARRANTIES OR
  * CONDITIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING WITHOUT
@@ -695,6 +695,7 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
                                             {
                                                 oldList.Add(upstreamTime.First);
                                                 stageTimes.messages[i] = downstreamTime.PairWith(oldList);
+                                                break;
                                             }
                                         }
                                         --stageTimes.empty;
@@ -1037,7 +1038,7 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
             List<Weighted<DiscardedMessage>> discardedMessageChanges = new List<Weighted<DiscardedMessage>>();
             List<CheckpointLowWatermark> gcUpdates;
             HashSet<int> newStageUpdates = new HashSet<int>();
-            
+
             if (sendGCUpdates)
             {
                 gcUpdates = new List<CheckpointLowWatermark>();
@@ -1136,6 +1137,11 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
                 //             deliveredMessageChanges,
                 //             discardedMessageChanges);
 
+                // Console.WriteLine("STATS: {0} {1} {2} {3}",
+                //                   checkpointState.Count,
+                //                   notifState.Count,
+                //                   delivMsgState.Count,
+                //                   discMsgState.Count);
                 this.checkpointStream.OnNext(checkpointChanges);
                 this.deliveredNotifications.OnNext(notificationChanges);
                 this.deliveredMessages.OnNext(deliveredMessageChanges);
@@ -1555,21 +1561,21 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
 
                 if (fullState)
                 {
-                    Console.Write(" ");
+                    Console.Write("Checkpoints:");
                     foreach (var checkpoint in state.Value.checkpoints.OrderBy(c => c))
                     {
                         Console.Write(" " + checkpoint);
                     }
                     Console.WriteLine();
 
-                    Console.Write(" ");
+                    Console.Write("Notifications:");
                     foreach (var time in state.Value.deliveredNotifications.OrderBy(t => new LexStamp(t)))
                     {
                         Console.Write(" " + time.Timestamp);
                     }
                     Console.WriteLine();
 
-                    Console.Write(" ");
+                    Console.Write("Delivered messages:");
                     foreach (var time in state.Value.deliveredMessages.OrderBy(t => t.Key))
                     {
                         Console.Write(" " + time.Key + ":");
@@ -1581,7 +1587,7 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
                     }
                     Console.WriteLine();
 
-                    Console.Write(" ");
+                    Console.Write("Discarded messages:");
                     foreach (var stage in state.Value.discardedMessages.OrderBy(t => t.Key))
                     {
                         Console.Write(" " + stage.Key + ":");
@@ -1848,7 +1854,6 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
             {
                 this.ShowRollback();
             }
-
             this.WriteLog("SHOWN ROLLBACK");
 
             IEnumerable<CheckpointLowWatermark> frontiers;
@@ -1872,7 +1877,6 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
                 this.WriteLog("RESTORED COMPUTATION");
                 if (gcUpdates.Count > 0)
                 {
-                    // TODO(ionel): Why are the gcUpdates received again?
                     computation.ReceiveCheckpointUpdates(gcUpdates);
                 }
             }
