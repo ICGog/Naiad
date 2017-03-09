@@ -312,8 +312,7 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
         var added = checkpointState.Add(checkpoint);
         if (added == false)
         {
-          Console.Error.WriteLine("Already added {0}", checkpoint);
-          Environment.Exit(1);
+          throw new ApplicationException("Already exists " + checkpoint);
         }
       }
       foreach (Notification notification in notificationChanges)
@@ -321,8 +320,7 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
         var added = notificationState.Add(notification);
         if (added == false)
         {
-          Console.Error.WriteLine("Already added {0}", notification);
-          Environment.Exit(1);
+          throw new ApplicationException("Already exists " + notification);
         }
       }
       foreach (DeliveredMessage delivMsg in delivMessageChanges)
@@ -330,8 +328,7 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
         var added = delivMsgState.Add(delivMsg);
         if (added == false)
         {
-          Console.Error.WriteLine("Already added {0}", delivMsg);
-          Environment.Exit(1);
+          throw new ApplicationException("Already exists " + delivMsg);
         }
       }
       foreach (DiscardedMessage discMsg in discMessageChanges)
@@ -339,8 +336,7 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
         var added = discMsgState.Add(discMsg);
         if (added == false)
         {
-          Console.Error.WriteLine("Already added {0}", discMsg);
-          Environment.Exit(1);
+          throw new ApplicationException("Already exists " + discMsg);
         }
       }
     }
@@ -357,8 +353,7 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
           var removed = checkpointState.Remove(checkpoint.record);
           if (removed == false)
           {
-            Console.Error.WriteLine("checkpoint remove {0}", checkpoint);
-            Environment.Exit(1);
+            throw new ApplicationException("Does not exist " + checkpoint);
           }
         }
         else if (checkpoint.weight == 1)
@@ -366,14 +361,12 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
           var added = checkpointState.Add(checkpoint.record);
           if (added == false)
           {
-            Console.Error.WriteLine("checkpoint add {0}", checkpoint);
-            Environment.Exit(1);
+            throw new ApplicationException("Already exists " + checkpoint);
           }
         }
         else
         {
-          Console.Error.WriteLine("Checkpoint weight error. Weight is {0}", checkpoint.weight);
-          Environment.Exit(1);
+          throw new ApplicationException("Unexpected weight");
         }
       }
 
@@ -384,8 +377,7 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
           var removed = notificationState.Remove(notification.record);
           if (removed == false)
           {
-            Console.Error.WriteLine("notification removed {0}", notification);
-            Environment.Exit(1);
+            throw new ApplicationException("Does not exist " + notification);
           }
         }
         else if (notification.weight == 1)
@@ -393,14 +385,12 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
           var added = notificationState.Add(notification.record);
           if (added == false)
           {
-            Console.Error.WriteLine("notification add {0}", notification);
-            Environment.Exit(1);
+            throw new ApplicationException("Already exists " + notification);
           }
         }
         else
         {
-          Console.Error.WriteLine("notification weight error. Weight is {0}", notification.weight);
-          Environment.Exit(1);
+          throw new ApplicationException("Unexpected weight");
         }
       }
 
@@ -411,8 +401,7 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
           var removed = delivMsgState.Remove(delivMsg.record);
           if (removed == false)
           {
-            Console.Error.WriteLine("delivMsg remove {0}", delivMsg);
-            Environment.Exit(1);
+            throw new ApplicationException("Does not exist " + delivMsg);
           }
         }
         else if (delivMsg.weight == 1)
@@ -420,14 +409,12 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
           var added = delivMsgState.Add(delivMsg.record);
           if (added == false)
           {
-            Console.Error.WriteLine("delivMsg add {0}", delivMsg);
-            Environment.Exit(1);
+            throw new ApplicationException("Already exists " + delivMsg);
           }
         }
         else
         {
-          Console.Error.WriteLine("delivMsg weight error. Weight is {0}", delivMsg.weight);
-          Environment.Exit(1);
+          throw new ApplicationException("Unexpected weight");
         }
       }
 
@@ -438,8 +425,7 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
           var removed = discMsgState.Remove(discMsg.record);
           if (removed == false)
           {
-           Console.Error.WriteLine("discMsg remove {0}", discMsg);
-           Environment.Exit(1);
+            throw new ApplicationException("Does not exist " + discMsg);
           }
         }
         else if (discMsg.weight == 1)
@@ -447,14 +433,12 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
           var added = discMsgState.Add(discMsg.record);
           if (added == false)
           {
-            Console.Error.WriteLine("discMsg add {0}", discMsg);
-            Environment.Exit(1);
+            throw new ApplicationException("Already exists " + discMsg);
           }
         }
         else
         {
-          Console.Error.WriteLine("discMsg weight error. Weight is {0}", discMsg.weight);
-          Environment.Exit(1);
+          throw new ApplicationException("Unexpected weight");
         }
       }
     }
