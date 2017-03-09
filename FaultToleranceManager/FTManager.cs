@@ -112,14 +112,17 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
         private List<Stage> denseStages;
         internal List<Stage> DenseStages { get { return this.denseStages; } }
 
+        // Used to transform from StageIds to DenseStageIds.
         private int[] toDenseStage;
 
         private Thread managerThread;
 
         private readonly Dictionary<SV, NodeState> nodeState = new Dictionary<SV, NodeState>();
-
+        // Mapping from StageVertex to list of upsteam StageVertices.
         private readonly Dictionary<SV, SV[]> upstreamEdges = new Dictionary<SV, SV[]>();
+        // Mapping from DenseStageId to list of upstream StageVertices.
         private readonly Dictionary<int, SV[]> upstreamStage = new Dictionary<int, SV[]>();
+        // Mapping from DenseStageId to sorted dictionary of frontiers mapping from frontiers to count.
         private readonly Dictionary<int, SortedDictionary<FTFrontier, int>> stageFrontiers = new Dictionary<int, SortedDictionary<FTFrontier, int>>();
 
         private void AddStageFrontier(int stage, FTFrontier frontier)
@@ -207,8 +210,7 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
             var added = checkpointState.Add(checkpoint);
             if (added == false)
             {
-              Console.Error.WriteLine("Already exists {0}", checkpoint);
-              Environment.Exit(1);
+              throw new ApplicationException("Already exists " + checkpoint);
             }
           }
           foreach (Notification notif in notifications)
@@ -216,8 +218,7 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
             var added = notifState.Add(notif);
             if (added == false)
             {
-              Console.Error.WriteLine("Already exists {0}", notif);
-              Environment.Exit(1);
+              throw new ApplicationException("Already exists " + notif);
             }
           }
           foreach (DeliveredMessage delivMsg in delivMsgs)
@@ -225,8 +226,7 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
             var added = delivMsgState.Add(delivMsg);
             if (added == false)
             {
-              Console.Error.WriteLine("Already exists {0}", delivMsg);
-              Environment.Exit(1);
+              throw new ApplicationException("Already exists " + delivMsg);
             }
           }
           foreach (DiscardedMessage discMsg in discMsgs)
@@ -234,8 +234,7 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
             var added = discMsgState.Add(discMsg);
             if (added == false)
             {
-              Console.Error.WriteLine("Already exists {0}", discMsg);
-              Environment.Exit(1);
+              throw new ApplicationException("Already exists " + discMsg);
             }
           }
         }
@@ -252,8 +251,7 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
               var added = checkpointState.Add(checkpoint.record);
               if (added == false)
               {
-                Console.Error.WriteLine("Already exists {0}", checkpoint);
-                Environment.Exit(1);
+                throw new ApplicationException("Already exists " + checkpoint);
               }
             }
             else if (checkpoint.weight == -1)
@@ -261,13 +259,12 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
               var removed = checkpointState.Remove(checkpoint.record);
               if (removed == false)
               {
-                Console.Error.WriteLine("Does not exist {0}", checkpoint);
-                Environment.Exit(1);
+                throw new ApplicationException("Does not exist " + checkpoint);
               }
             }
             else
             {
-              Environment.Exit(1);
+              throw new ApplicationException("Unexpected weight");
             }
           }
           foreach (Weighted<Notification> notif in notifications)
@@ -277,8 +274,7 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
               var added = notifState.Add(notif.record);
               if (added == false)
               {
-                Console.Error.WriteLine("Already exists {0}", notif);
-                Environment.Exit(1);
+                throw new ApplicationException("Already exists " + notif);
               }
             }
             else if (notif.weight == -1)
@@ -286,13 +282,12 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
               var removed = notifState.Remove(notif.record);
               if (removed == false)
               {
-                Console.Error.WriteLine("Does not exist {0}", notif);
-                Environment.Exit(1);
+                throw new ApplicationException("Does not exist " + notif);
               }
             }
             else
             {
-              Environment.Exit(1);
+              throw new ApplicationException("Unexpected weight");
             }
           }
           foreach (Weighted<DeliveredMessage> delivMsg in delivMsgs)
@@ -302,8 +297,7 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
               var added = delivMsgState.Add(delivMsg.record);
               if (added == false)
               {
-                Console.Error.WriteLine("Already exists {0}", delivMsg);
-                Environment.Exit(1);
+                throw new ApplicationException("Already exists " + delivMsg);
               }
             }
             else if (delivMsg.weight == -1)
@@ -311,13 +305,12 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
               var removed = delivMsgState.Remove(delivMsg.record);
               if (removed == false)
               {
-                Console.Error.WriteLine("Does not exist {0}", delivMsg);
-                Environment.Exit(1);
+                throw new ApplicationException("Does not exist " + delivMsg);
               }
             }
             else
             {
-              Environment.Exit(1);
+              throw new ApplicationException("Unexpected weight");
             }
           }
           foreach (Weighted<DiscardedMessage> discMsg in discMsgs)
@@ -327,8 +320,7 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
               var added = discMsgState.Add(discMsg.record);
               if (added == false)
               {
-                Console.Error.WriteLine("Already exists {0}", discMsg);
-                Environment.Exit(1);
+                throw new ApplicationException("Already exists " + discMsg);
               }
             }
             else if (discMsg.weight == -1)
@@ -336,13 +328,12 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
               var removed = discMsgState.Remove(discMsg.record);
               if (removed == false)
               {
-                Console.Error.WriteLine("Does not exist {0}", discMsg);
-                Environment.Exit(1);
+                throw new ApplicationException("Does not exist " + discMsg);
               }
             }
             else
             {
-              Environment.Exit(1);
+              throw new ApplicationException("Unexpected weight");
             }
 
           }
@@ -350,6 +341,7 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
 
         private Computation computation;
 
+        // Ids of the stages to monitor.
         private HashSet<int> stagesToMonitor = new HashSet<int>();
 
         private enum State
@@ -401,6 +393,7 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
 
         private void GetGraph(object o, Diagnostics.GraphMaterializedEventArgs args)
         {
+            // Populate denseStages and toDenseStage.
             this.denseStages = new List<Stage>();
             this.toDenseStage = new int[args.stages.Select(s => s.StageId).Max() + 1];
             foreach (Stage stage in args.stages)
@@ -411,6 +404,7 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
                 this.denseStages.Add(stage);
             }
 
+            // args.ftmanager = for each (stageId, vertexId) -> FT vertexId that receives updates.
             foreach (Pair<Pair<int, int>, int> ftVertex in args.ftmanager)
             {
                 int denseStageId = this.toDenseStage[ftVertex.First.First];
@@ -422,6 +416,7 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
                 this.AddStageFrontier(denseStageId, new FTFrontier(false));
             }
 
+            // Populate upstreamEdges from graph edges.
             foreach (Pair<SV, SV[]> edgeList in args.edges
                 .Select(e => new SV(this.toDenseStage[e.First.First], e.First.Second).PairWith(
                     new SV(this.toDenseStage[e.Second.First], e.Second.Second)))
@@ -436,6 +431,7 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
                 this.upstreamEdges.Add(node, new SV[0]);
             }
 
+            // Populate upstreamStages from graph edges.
             foreach (Pair<int, SV[]> edgeList in args.edges
                 .Select(e => new SV(this.toDenseStage[e.First.First], e.First.Second).PairWith(this.toDenseStage[e.Second.First]))
                 .GroupBy(e => e.Second)
@@ -449,6 +445,7 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
                 this.upstreamStage.Add(denseStage, new SV[0]);
             }
 
+            // Initialize discardedMessages with empty discard lists.
             foreach (Pair<SV, int> edgeList in args.edges
                 .Select(e => new SV(this.toDenseStage[e.First.First], e.First.Second).PairWith(this.toDenseStage[e.Second.First]))
                 .Distinct())
@@ -504,6 +501,7 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
             List<DeliveredMessage> deliveredMessageChanges = new List<DeliveredMessage>();
             List<DiscardedMessage> discardedMessageChanges = new List<DiscardedMessage>();
 
+            // Add initial empty checkpoints (i.e., checkpoints for start time).
             checkpoints.AddRange(this.InitializeCheckpoints());
 
             LogOnNext(checkpoints, notificationChanges, deliveredMessageChanges,
@@ -539,50 +537,6 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
             Stage stage = this.denseStages[denseStageId];
             SV node = new SV(denseStageId, update.vertexId);
             NodeState state = this.nodeState[node];
-
-#if false
-#if true
-            if (update.stageId == 46 && update.vertexId == 0)
-            {
-                if (update.frontier.maximalElement.Timestamp[1] > 1)
-                {
-                    Console.WriteLine("Ignoring update " + stage + "[" + update.vertexId + "] " + update.frontier);
-                    this.nodeState[node] = state;
-                    return;
-                }
-            }
-#else
-            if (update.stageId == 33 && update.vertexId == 0)
-            {
-                Pointstamp p = new Pointstamp();
-                p.Location = update.stageId;
-                p.Timestamp.a = 0;
-                p.Timestamp.b = 2;
-                p.Timestamp.c = 3;
-                p.Timestamp.Length = 3;
-
-                if (update.frontier.Contains(p))
-                {
-                    this.nodeState[node] = state;
-                    return;
-                }
-            }
-
-            if (update.stageId == 49 && update.vertexId == 0)
-            {
-                Pointstamp p = new Pointstamp();
-                p.Location = update.stageId;
-                p.Timestamp.a = 3;
-                p.Timestamp.Length = 1;
-
-                if (update.frontier.Contains(p))
-                {
-                    this.nodeState[node] = state;
-                    return;
-                }
-            }
-#endif
-#endif
 
             if (state.currentRestoration.Contains(update.frontier))
             {
@@ -1097,6 +1051,7 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
 
             this.WriteLog("INJECTING");
 
+            // Process checkpoint updates.
             foreach (CheckpointUpdate update in updates)
             {
                 if (this.logLevel != LogLevel.Minimal)
@@ -1110,6 +1065,7 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
 
             if (changes != null)
             {
+                // Changes to frontiers. Can only reach here when in DrainingForRollback state.
                 this.WriteLog("ADDING CHANGES");
                 if (this.logLevel == LogLevel.Verbose)
                 {
@@ -1216,6 +1172,11 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
 
             LogWeightedOnNext(checkpointChanges, notificationChanges,
                               deliveredMessageChanges, discardedMessageChanges);
+
+            // ApplyDeltas(checkpointChanges,
+            //             notificationChanges,
+            //             deliveredMessageChanges,
+            //             discardedMessageChanges);
 
             this.checkpointStream.OnNext(checkpointChanges);
             this.deliveredNotifications.OnNext(notificationChanges);
@@ -1755,14 +1716,12 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
                 }
                 if (this.pendingUpdates == null)
                 {
-                    this.WriteLog("ComputeRollback: pendingUpdates null");
                     // there is no computation, so we have to start it ourselves
                     this.state = State.AddedTemporaryForRollback;
                     mustStart = true;
                 }
                 else
                 {
-                    this.WriteLog("ComputeRollback: pendingUpdates non-null");
                     // there is a computation going on: tell it to start the rollback when it finishes
                     this.state = State.DrainingForRollback;
                 }
@@ -1774,7 +1733,6 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
 
             if (mustStart)
             {
-                this.WriteLog("ComputeRollback: InjectUpdates");
                 bool didAnything = this.InjectUpdates(this.temporaryUpdates, null, false);
                 if (!didAnything)
                 {
@@ -1782,7 +1740,6 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
                 }
             }
 
-            this.WriteLog("ComputeRollback: pre barrier");
             barrier.Wait();
 
             this.WriteLog("ROLLBACK COMPLETE");
@@ -1915,6 +1872,7 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
                 this.WriteLog("RESTORED COMPUTATION");
                 if (gcUpdates.Count > 0)
                 {
+                    // TODO(ionel): Why are the gcUpdates received again?
                     computation.ReceiveCheckpointUpdates(gcUpdates);
                 }
             }
