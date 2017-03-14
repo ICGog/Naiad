@@ -719,6 +719,21 @@ namespace Microsoft.Research.Naiad.Frameworks.Lindi
                          .Aggregate((a, b) => a.CompareTo(b) < 0 ? a : b, true, checkpointPolicy);
         }
 
+      public static Stream<Pair<TKey, TInput>, TTime> Min2<TInput, TKey, TValue, TTime>(
+          this Stream<TInput, TTime> stream,
+          Func<TInput, TKey> keySelector,
+          Func<TInput, TValue> valueSelector,
+          Func<int, ICheckpointPolicy> checkpointPolicy = null)
+        where TTime : Time<TTime>
+        where TValue : IComparable<TValue>
+      {
+        if (stream == null) throw new ArgumentNullException("stream");
+        if (keySelector == null) throw new ArgumentNullException("keySelector");
+        if (valueSelector == null) throw new ArgumentNullException("valueSelector");
+        Stream<Pair<TKey, TInput>, TTime> keyedStream = stream.Select(x => keySelector(x).PairWith(x)).SetCheckpointPolicy(checkpointPolicy);
+        return keyedStream.Aggregate((a, b) => valueSelector(a).CompareTo(valueSelector(b)) < 0 ? a : b, true, checkpointPolicy);
+      }
+
         /// <summary>
         /// Groups records using the supplied key selector, and computes the maximum value in each group.
         /// </summary>
@@ -742,6 +757,21 @@ namespace Microsoft.Research.Naiad.Frameworks.Lindi
             return stream.Select(x => keySelector(x).PairWith(valueSelector(x))).SetCheckpointPolicy(checkpointPolicy)
                          .Aggregate((a, b) => a.CompareTo(b) > 0 ? a : b, true, checkpointPolicy);
         }
+
+      public static Stream<Pair<TKey, TInput>, TTime> Max2<TInput, TKey, TValue, TTime>(
+          this Stream<TInput, TTime> stream,
+          Func<TInput, TKey> keySelector,
+          Func<TInput, TValue> valueSelector,
+          Func<int, ICheckpointPolicy> checkpointPolicy = null)
+        where TTime : Time<TTime>
+        where TValue : IComparable<TValue>
+      {
+        if (stream == null) throw new ArgumentNullException("stream");
+        if (keySelector == null) throw new ArgumentNullException("keySelector");
+        if (valueSelector == null) throw new ArgumentNullException("valueSelector");
+        Stream<Pair<TKey, TInput>, TTime> keyedStream = stream.Select(x => keySelector(x).PairWith(x)).SetCheckpointPolicy(checkpointPolicy);
+        return keyedStream.Aggregate((a, b) => valueSelector(a).CompareTo(valueSelector(b)) > 0 ? a : b, true, checkpointPolicy);
+      }
 
         /// <summary>
         /// Groups records using the supplied key selector, and applies the given aggregation function.
