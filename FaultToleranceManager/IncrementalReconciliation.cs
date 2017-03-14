@@ -781,6 +781,128 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
         //             (UInt64)m.dstTime.value);
         // }
 
+    public static Stream<Frontier, T> ReduceForDiscarded<T>(
+      this Stream<Frontier, T> frontiers,
+      Stream<Checkpoint, T> checkpoints,
+      Stream<DiscardedMessage, T> discardedMessages,
+      FTManager manager) where T : Time<T>
+    {
+      return frontiers
+        // only take the restoration frontiers
+        .Where(f => !f.isNotification)
+        // only take the lowest frontier at each stage
+        .Min2(f => f.node.DenseStageId, f => f.frontier.value)
+        // match with all the discarded messages to the node for a given restoration frontier
+        .Join(discardedMessages, f => f.Second.node.DenseStageId, m => m.dstDenseStage, (f, m) => f.Second.PairWith(m))
+        // keep all discarded messages that are outside the restoration frontier at the node
+        .Where(p => !p.First.frontier.Contains(p.Second.dstTime))
+        // we only need the sender node id and the send time of the discarded message
+        .Select(p => p.Second.src.PairWith(p.Second.srcTime))
+        // keep the sender node and minimum send time of any discarded message outside its destination restoration frontier
+        .Min2(m => m.First.denseId, m => m.Second.value)
+        // for each node that sent a needed discarded message, match it up with all the available checkpoints,
+        // reducing downward-closed checkpoints to be less than the time the message was sent
+        .Join(
+              checkpoints, m => m.Second.First.denseId, c => c.node.denseId,
+              (m, c) => PairCheckpointToBeLowerThanTime(c, m.Second.Second, manager))
+        // then throw out any checkpoints that included any required but discarded sent messages
+        .Where(c => !c.First.checkpoint.Contains(c.Second))
+        // and just keep the feasible checkpoint
+        .Select(c => c.First)
+        // now select the largest feasible checkpoint at each node constrained by discarded messages
+        .Max2(c => c.node.denseId, c => c.checkpoint.value)
+        // and convert it to a pair of frontiers
+        .SelectMany(c => new Frontier[] {
+            new Frontier(c.Second.node, c.Second.checkpoint, false),
+            new Frontier(c.Second.node, c.Second.checkpoint, true) });
+    }
+
+    public static Stream<Frontier, T> Reduce<T>(
+      this Stream<Frontier, T> frontiers,
+      Stream<Checkpoint, T> checkpoints,
+      Stream<DeliveredMessage, T> deliveredMessageTimes,
+      Stream<Notification, T> deliveredNotificationTimes,
+      Stream<Edge, T> graph,
+      FTManager manager) where T : Time<T>
+    {
+      Stream<Pair<Pair<int, SV>, LexStamp>, T> projectedMessageFrontiers = frontiers
+        // only look at the restoration frontiers
+        .Where(f => !f.isNotification)
+        // project each frontier along each outgoing edge
+        .Join(
+          graph, f => f.node.denseId, e => e.src.denseId,
+          (f, e) => e.src.DenseStageId
+            .PairWith(e.dst)
+            .PairWith(f.frontier.Project(
+               manager.DenseStages[e.src.DenseStageId],
+               manager.DenseStages[e.src.DenseStageId].DefaultVersion.Timestamp.Length)))
+        // keep only the lowest projected frontier from each src stage
+        .Min2(f => StageFrontierKey(f), f => f.Second.value)
+        .Select(f => f.Second);
+
+      Stream<Pair<SV,LexStamp>,T> staleDeliveredMessages = deliveredMessageTimes
+        //// make sure messages are unique
+        //.Distinct()
+        // match up delivered messages with the projected frontier along the delivery edge,
+        // keeping the dst node, dst time and projected frontier
+        .Join(
+          projectedMessageFrontiers, m => EdgeKey(m.srcDenseStage.PairWith(m.dst)), f => EdgeKey(f.First),
+                (m, f) => f.First.Second.PairWith(m.dstTime.PairWith(f.Second)))
+          // filter to keep only messages that fall outside their projected frontiers
+          .Where(m => !m.Second.Second.Contains(m.Second.First))
+          // we only care about the destination node and stale message time
+          .Select(m => m.First.PairWith(m.Second.First));
+
+      Stream<Frontier, T> intersectedProjectedNotificationFrontiers = frontiers
+        // only look at the notification frontiers
+        .Where(f => f.isNotification)
+        // project each frontier along each outgoing edge to its destination
+        .Join(
+          graph, f => f.node.denseId, e => e.src.denseId,
+          (f, e) => new Frontier(e.dst, f.frontier.Project(
+            manager.DenseStages[e.src.DenseStageId],
+            manager.DenseStages[e.src.DenseStageId].DefaultVersion.Timestamp.Length), true))
+        // and find the intersection (minimum) of the projections at the destination
+        .Min2(f => f.node.denseId, f => f.frontier.value)
+        .Select(f => f.Second);
+
+      Stream<Pair<SV,LexStamp>,T> staleDeliveredNotifications = deliveredNotificationTimes
+        // match up delivered notifications with the intersected projected notification frontier at the node,
+        // keeping node, time and intersected projected frontier
+        .Join(
+          intersectedProjectedNotificationFrontiers, n => n.node.denseId, f => f.node.denseId,
+          (n, f) => n.node.PairWith(n.time.PairWith(f.frontier)))
+        // filter to keep only notifications that fall outside their projected frontiers
+        .Where(n => !n.Second.Second.Contains(n.Second.First))
+        // we only care about the node and stale notification time
+        .Select(n => n.First.PairWith(n.Second.First));
+
+      Stream<Pair<SV,LexStamp>,T> earliestStaleEvents = staleDeliveredMessages
+        .Concat(staleDeliveredNotifications)
+        // keep only the earliest stale event at each node
+        .Min2(n => n.First.denseId, n => n.Second.value)
+        .Select(f => f.Second);
+
+      var reducedFrontiers = checkpoints
+        // for each node that executed a stale, match it up with all the available checkpoints,
+        // reducing downward-closed checkpoints to be less than the time the event happened at
+        .Join(
+          earliestStaleEvents, c => c.node.denseId, e => e.First.denseId,
+          (c, e) => PairCheckpointToBeLowerThanTime(c, e.Second, manager))
+        // then throw out any checkpoints that included any stale events
+        .Where(c => !c.First.checkpoint.Contains(c.Second))
+        // and select the largest feasible checkpoint at each node
+        .Max2(c => c.First.node.denseId, c => c.First.checkpoint.value)
+        .Select(c => c.Second)
+        // then convert it to a pair of frontiers
+        .SelectMany(c => new Frontier[] {
+            new Frontier(c.First.node, c.First.checkpoint, false),
+            new Frontier(c.First.node, c.First.checkpoint, true) });
+
+      // return any reduction in either frontier
+      return reducedFrontiers.Concat(intersectedProjectedNotificationFrontiers);
+    }
+
         public static Collection<Frontier, T> ReduceForDiscarded<T>(
             this Collection<Frontier, T> frontiers,
             Collection<Checkpoint, T> checkpoints,

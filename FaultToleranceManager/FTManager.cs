@@ -30,6 +30,7 @@ using System.Collections.Concurrent;
 
 using Microsoft.Research.Naiad.Frameworks.DifferentialDataflow;
 using Microsoft.Research.Naiad.Frameworks.Lindi;
+using Microsoft.Research.Naiad.Input;
 using Microsoft.Research.Naiad.Runtime.FaultTolerance;
 using Microsoft.Research.Naiad.Runtime.Progress;
 using Microsoft.Research.Naiad.Dataflow;
@@ -102,12 +103,17 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
     {
         public FTManager(Func<string, LogStream> logStreamFactory,
                          NaiadWriter onNextWriter,
-                         NaiadWriter onNextGraphWriter)
+                         NaiadWriter onNextGraphWriter,
+                         bool computeFrontiersIncrementally = true)
         {
             this.logStreamFactory = logStreamFactory;
             this.onNextWriter = onNextWriter;
             this.onNextGraphWriter = onNextGraphWriter;
+            this.computeFrontiersIncrementally = computeFrontiersIncrementally;
         }
+
+        private bool computeFrontiersIncrementally;
+        private HashSet<Frontier> currentFrontiers;
 
         private List<Stage> denseStages;
         internal List<Stage> DenseStages { get { return this.denseStages; } }
@@ -370,6 +376,18 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
         private InputCollection<Notification> deliveredNotifications;
         private InputCollection<DiscardedMessage> discardedMessages;
 
+        private BatchedDataSource<Edge> graphInput;
+        private BatchedDataSource<Checkpoint> checkpointStreamInput;
+        private BatchedDataSource<DeliveredMessage> deliveredMessagesInput;
+        private BatchedDataSource<Notification> deliveredNotificationsInput;
+        private BatchedDataSource<DiscardedMessage> discardedMessagesInput;
+
+        private Stream<Edge, Epoch> graphInputStream;
+        private Stream<Checkpoint, Epoch> checkpointInputStream;
+        private Stream<DeliveredMessage, Epoch> delivMessageInputStream;
+        private Stream<Notification, Epoch> delivNotifInputStream;
+        private Stream<DiscardedMessage, Epoch> discMessageInputStream;
+
         private HashSet<Checkpoint> checkpointState;
         private HashSet<DeliveredMessage> delivMsgState;
         private HashSet<Notification> notifState;
@@ -493,8 +511,16 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
               onNextGraphWriter.Write(0);
               onNextGraphWriter.Flush();
             }
-            this.graph.OnNext(edges);
-            this.graph.OnCompleted();
+            if (this.computeFrontiersIncrementally)
+            {
+              this.graph.OnNext(edges);
+              this.graph.OnCompleted();
+            }
+            else
+            {
+              this.graphInput.OnNext(edges);
+              this.graphInput.OnCompleted();
+            }
 
             List<Checkpoint> checkpoints = new List<Checkpoint>();;
             List<Notification> notificationChanges = new List<Notification>();
@@ -512,16 +538,26 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
             this.delivMsgState = new HashSet<DeliveredMessage>();
             this.discMsgState = new HashSet<DiscardedMessage>();
 
-            // ApplyInitialDeltas(checkpoints,
-            //                    notificationChanges,
-            //                    deliveredMessageChanges,
-            //                    discardedMessageChanges);
+            ApplyInitialDeltas(checkpoints,
+                               notificationChanges,
+                               deliveredMessageChanges,
+                               discardedMessageChanges);
 
-            this.checkpointStream.OnNext(checkpoints);
-            this.deliveredMessages.OnNext();
-            this.deliveredNotifications.OnNext();
-            this.discardedMessages.OnNext();
 
+            if (this.computeFrontiersIncrementally)
+            {
+              this.checkpointStream.OnNext(checkpoints);
+              this.deliveredMessages.OnNext();
+              this.deliveredNotifications.OnNext();
+              this.discardedMessages.OnNext();
+            }
+            else
+            {
+              this.checkpointStreamInput.OnNext(checkpoints);
+              this.deliveredMessagesInput.OnNext();
+              this.deliveredNotificationsInput.OnNext();
+              this.discardedMessagesInput.OnNext();
+            }
             ++this.epoch;
         }
 
@@ -1132,21 +1168,31 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
                                   deliveredMessageChanges,
                                   discardedMessageChanges);
 
-                // ApplyDeltas(checkpointChanges,
-                //             notificationChanges,
-                //             deliveredMessageChanges,
-                //             discardedMessageChanges);
+                ApplyDeltas(checkpointChanges,
+                            notificationChanges,
+                            deliveredMessageChanges,
+                            discardedMessageChanges);
 
                 // Console.WriteLine("STATS: {0} {1} {2} {3}",
                 //                   checkpointState.Count,
                 //                   notifState.Count,
                 //                   delivMsgState.Count,
                 //                   discMsgState.Count);
-                this.checkpointStream.OnNext(checkpointChanges);
-                this.deliveredNotifications.OnNext(notificationChanges);
-                this.deliveredMessages.OnNext(deliveredMessageChanges);
-                this.discardedMessages.OnNext(discardedMessageChanges);
 
+                if (this.computeFrontiersIncrementally)
+                {
+                  this.checkpointStream.OnNext(checkpointChanges);
+                  this.deliveredNotifications.OnNext(notificationChanges);
+                  this.deliveredMessages.OnNext(deliveredMessageChanges);
+                  this.discardedMessages.OnNext(discardedMessageChanges);
+                }
+                else
+                {
+                  this.checkpointStreamInput.OnNext(checkpointState.ToList());
+                  this.deliveredMessagesInput.OnNext(delivMsgState.ToList());
+                  this.deliveredNotificationsInput.OnNext(notifState.ToList());
+                  this.discardedMessagesInput.OnNext(discMsgState.ToList());
+                }
                 ++this.epoch;
             }
 
@@ -1179,16 +1225,25 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
             LogWeightedOnNext(checkpointChanges, notificationChanges,
                               deliveredMessageChanges, discardedMessageChanges);
 
-            // ApplyDeltas(checkpointChanges,
-            //             notificationChanges,
-            //             deliveredMessageChanges,
-            //             discardedMessageChanges);
+            ApplyDeltas(checkpointChanges,
+                        notificationChanges,
+                        deliveredMessageChanges,
+                        discardedMessageChanges);
 
-            this.checkpointStream.OnNext(checkpointChanges);
-            this.deliveredNotifications.OnNext(notificationChanges);
-            this.deliveredMessages.OnNext(deliveredMessageChanges);
-            this.discardedMessages.OnNext(discardedMessageChanges);
-
+            if (this.computeFrontiersIncrementally)
+            {
+              this.checkpointStream.OnNext(checkpointChanges);
+              this.deliveredNotifications.OnNext(notificationChanges);
+              this.deliveredMessages.OnNext(deliveredMessageChanges);
+              this.discardedMessages.OnNext(discardedMessageChanges);
+            }
+            else
+            {
+              this.checkpointStreamInput.OnNext(checkpointState.ToList());
+              this.deliveredMessagesInput.OnNext(delivMsgState.ToList());
+              this.deliveredNotificationsInput.OnNext(notifState.ToList());
+              this.discardedMessagesInput.OnNext(discMsgState.ToList());
+            }
             ++this.epoch;
         }
 
@@ -1422,6 +1477,30 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
             this.quiescenceBarrier = null;
         }
 
+        private void ReactToFrontiers(IEnumerable<Frontier> frontiers)
+        {
+          List<Weighted<Frontier>> changes = new List<Weighted<Frontier>>();
+          var allFrontiers = frontiers.ToList();
+          HashSet<Frontier> newFrontiers = new HashSet<Frontier>();
+          foreach (Frontier frontier in allFrontiers)
+          {
+            newFrontiers.Add(frontier);
+            if (!currentFrontiers.Contains(frontier))
+            {
+              changes.Add(new Weighted<Frontier>(frontier, 1));
+            }
+          }
+          foreach (Frontier frontier in currentFrontiers)
+          {
+            if (!newFrontiers.Contains(frontier))
+            {
+              changes.Add(new Weighted<Frontier>(frontier, -1));
+            }
+          }
+          currentFrontiers = newFrontiers;
+          ReactToFrontiers(changes);
+        }
+
         private void ReactToFrontiers(IEnumerable<Weighted<Frontier>> changes)
         {
             this.WriteLog("COMPLETE");
@@ -1605,7 +1684,108 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
             }
         }
 
-        private void Manage(ManualResetEventSlim startBarrier, ManualResetEventSlim stopBarrier, int workerCount)
+        private void Manage(ManualResetEventSlim startBarrier, ManualResetEventSlim stopBarrier, int workerCount) {
+          if (computeFrontiersIncrementally == true)
+          {
+            ManageIncremental(startBarrier, stopBarrier, workerCount);
+          }
+          else
+          {
+            ManageNonIncremental(startBarrier, stopBarrier, workerCount);
+          }
+        }
+
+        private void ManageNonIncremental(ManualResetEventSlim startBarrier, ManualResetEventSlim stopBarrier, int workerCount)
+        {
+            Configuration config = new Configuration();
+            config.MaxLatticeInternStaleTimes = 10;
+            config.WorkerCount = workerCount;
+
+            using (Computation reconciliation = NewComputation.FromConfig(config))
+            {
+              this.graphInput = new BatchedDataSource<Edge>();
+              this.checkpointStreamInput = new BatchedDataSource<Checkpoint>();
+              this.deliveredMessagesInput = new BatchedDataSource<DeliveredMessage>();
+              this.deliveredNotificationsInput = new BatchedDataSource<Notification>();
+              this.discardedMessagesInput = new BatchedDataSource<DiscardedMessage>();
+
+              this.graphInputStream = computation.NewInput(graphInput);
+              this.checkpointInputStream = computation.NewInput(checkpointStreamInput);
+              this.delivMessageInputStream = computation.NewInput(deliveredMessagesInput);
+              this.delivNotifInputStream = computation.NewInput(deliveredNotificationsInput);
+              this.discMessageInputStream = computation.NewInput(discardedMessagesInput);
+
+              Stream<Frontier, Epoch> initial = checkpointInputStream
+                .Max2(c => c.node.denseId, c => c.checkpoint.value)
+                .SelectMany(c => new Frontier[] {
+                    new Frontier(c.Second.node, c.Second.checkpoint, false),
+                    new Frontier(c.Second.node, c.Second.checkpoint, true) });
+
+              this.currentFrontiers = new HashSet<Frontier>();
+              initial.Subscribe(ffs => { foreach (Frontier frontier in ffs) currentFrontiers.Add(frontier); });
+
+              var frontiers = initial;
+              while (true)
+              {
+                var reducedDiscards = frontiers
+                  .ReduceForDiscarded(
+                     checkpointInputStream, discMessageInputStream, this);
+                var reduced = frontiers
+                  .Reduce(checkpointInputStream, delivMessageInputStream, delivNotifInputStream, graphInputStream, this);
+                frontiers = reduced.Concat(reducedDiscards).Concat(frontiers)
+                  .Min2(ff => (ff.node.denseId + (ff.isNotification ? 0x10000 : 0)), ff => ff.frontier.value)
+                  .Select(fff => fff.Second);
+                int frontierDiff = 0;
+                initial.Except(frontiers).Subscribe(x => frontierDiff += 1);
+                frontiers.Except(initial).Subscribe(x => frontierDiff += 1);
+                if (frontierDiff == 0)
+                {
+                  break;
+                }
+                initial = frontiers;
+              }
+
+              var sync = frontiers.Subscribe(changes => ReactToFrontiers(changes));
+
+              reconciliation.Activate();
+
+              startBarrier.Set();
+
+              // the streams will now be fed by other threads until the computation exits
+
+              stopBarrier.Wait();
+
+              ManualResetEventSlim finalBarrier = null;
+              lock (this)
+              {
+                if (this.pendingUpdates != null)
+                {
+                  // there is a computation running
+                  this.state = State.Stopping;
+                  this.quiescenceBarrier = new ManualResetEventSlim(false);
+                  finalBarrier = this.quiescenceBarrier;
+                }
+              }
+
+              if (finalBarrier != null)
+              {
+                finalBarrier.Wait();
+              }
+
+              LogOnComplete();
+
+              checkpointStreamInput.OnCompleted();
+              deliveredMessagesInput.OnCompleted();
+              deliveredNotificationsInput.OnCompleted();
+              discardedMessagesInput.OnCompleted();
+
+              reconciliation.Join();
+            }
+
+            this.ShowState(false);
+        }
+
+        private void ManageIncremental(ManualResetEventSlim startBarrier, ManualResetEventSlim stopBarrier, int workerCount)
         {
             Configuration config = new Configuration();
             config.MaxLatticeInternStaleTimes = 10;
