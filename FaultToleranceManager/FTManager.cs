@@ -1709,11 +1709,11 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
               this.deliveredNotificationsInput = new BatchedDataSource<Notification>();
               this.discardedMessagesInput = new BatchedDataSource<DiscardedMessage>();
 
-              this.graphInputStream = computation.NewInput(graphInput);
-              this.checkpointInputStream = computation.NewInput(checkpointStreamInput);
-              this.delivMessageInputStream = computation.NewInput(deliveredMessagesInput);
-              this.delivNotifInputStream = computation.NewInput(deliveredNotificationsInput);
-              this.discMessageInputStream = computation.NewInput(discardedMessagesInput);
+              this.graphInputStream = reconciliation.NewInput(graphInput);
+              this.checkpointInputStream = reconciliation.NewInput(checkpointStreamInput);
+              this.delivMessageInputStream = reconciliation.NewInput(deliveredMessagesInput);
+              this.delivNotifInputStream = reconciliation.NewInput(deliveredNotificationsInput);
+              this.discMessageInputStream = reconciliation.NewInput(discardedMessagesInput);
 
               Stream<Frontier, Epoch> initial = checkpointInputStream
                 .Max2(c => c.node.denseId, c => c.checkpoint.value)
@@ -1722,7 +1722,6 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
                     new Frontier(c.Second.node, c.Second.checkpoint, true) });
 
               this.currentFrontiers = new HashSet<Frontier>();
-              initial.Subscribe(ffs => { foreach (Frontier frontier in ffs) currentFrontiers.Add(frontier); });
 
               var frontiers = initial;
               while (true)

@@ -1868,6 +1868,7 @@ namespace FaultToleranceExamples.ComplexFTWorkflow
             int debugProcess = -1;
             int failureIntervalSecs = 15;
             int i = 1;
+            bool nonIncrementalFTManager = false;
             while (i < args.Length)
             {
                 switch (args[i].ToLower())
@@ -1886,7 +1887,10 @@ namespace FaultToleranceExamples.ComplexFTWorkflow
                         debugProcess = Int32.Parse(args[i + 1]);
                         i += 2;
                         break;
-
+                    case "-nonincrementalftmanager":
+                        nonIncrementalFTManager = true;
+                        i++;
+                        break;
                     case "-mwc":
                         managerWorkerCount = Int32.Parse(args[i + 1]);
                         i += 2;
@@ -2010,7 +2014,8 @@ namespace FaultToleranceExamples.ComplexFTWorkflow
 
             FTManager manager = new FTManager(this.config.LogStreamFactory,
                                               onNextWriter,
-                                              onNextGraphWriter);
+                                              onNextGraphWriter,
+                                              !nonIncrementalFTManager);
 
             if (useAzure)
             {
