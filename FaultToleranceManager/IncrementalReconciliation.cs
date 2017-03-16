@@ -683,6 +683,11 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
                 && this.isNotification == other.isNotification;
         }
 
+        public override string ToString()
+        {
+          return node + " " + frontier + " " + isNotification;
+        }
+
         public override int GetHashCode()
         {
             return node.denseId + frontier.GetHashCode() + ((isNotification) ? 1: 0);

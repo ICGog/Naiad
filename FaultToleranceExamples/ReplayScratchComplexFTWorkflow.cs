@@ -504,26 +504,22 @@ namespace FaultToleranceExamples.ReplayScratchComplexFTWorkflow
               new Frontier(c.Second.node, c.Second.checkpoint, false),
               new Frontier(c.Second.node, c.Second.checkpoint, true) });
 
-        var frontiers = initial;
-        while (true)
-        {
-          var reducedDiscards = frontiers
-            .ReduceForDiscarded(
-                checkpointStream, discardedMessages, this);
-          var reduced = frontiers
-            .Reduce(checkpointStream, deliveredMessages, deliveredNotifications, graph, this);
-          frontiers = reduced.Concat(reducedDiscards).Concat(frontiers)
+        var frontiers = initial
+          .IterateAndAccumulate((c, f) =>
+            {
+              var reducedDiscards = f
+                .ReduceForDiscarded(c.EnterLoop(checkpointStream),
+                                    c.EnterLoop(discardedMessages), this);
+              var reduced = f
+                .Reduce(c.EnterLoop(checkpointStream),
+                        c.EnterLoop(deliveredMessages),
+                        c.EnterLoop(deliveredNotifications),
+                        c.EnterLoop(graph), this);
+              return reduced.Concat(reducedDiscards).Concat(f)
                 .Min2(ff => (ff.node.denseId + (ff.isNotification ? 0x10000 : 0)), ff => ff.frontier.value)
                 .Select(fff => fff.Second);
-          int frontierDiff = 0;
-          initial.Except(frontiers).Subscribe(x => frontierDiff += 1);
-          frontiers.Except(initial).Subscribe(x => frontierDiff += 1);
-          if (frontierDiff == 0)
-          {
-            break;
-          }
-          initial = frontiers;
-        }
+            }, Int32.MaxValue, "ComputeFrontiers");
+
 
         frontiers.Subscribe(l => { } );
         computation.Activate();

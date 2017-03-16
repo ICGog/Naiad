@@ -513,7 +513,7 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
                 .Min(ff => (ff.node.denseId + (ff.isNotification ? 0x10000 : 0)), ff => ff.frontier.value);
             })
           .Consolidate();
-        frontiers.Subscribe(l => { } );
+        frontiers.Subscribe(l => {  } );
         computation.Activate();
 
 
@@ -573,10 +573,10 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
                                 initDeliveredMessageChanges,
                                 initDiscardedMessageChanges);
 
-              // ApplyInitialDeltas(initCheckpointChanges,
-              //                    initNotificationChanges,
-              //                    initDeliveredMessageChanges,
-              //                    initDiscardedMessageChanges);
+              ApplyInitialDeltas(initCheckpointChanges,
+                                 initNotificationChanges,
+                                 initDeliveredMessageChanges,
+                                 initDiscardedMessageChanges);
 
               checkpointStream.OnNext(initCheckpointChanges);
               deliveredNotifications.OnNext(initNotificationChanges);
@@ -616,13 +616,13 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
                   //   Console.WriteLine("DDD: {0}", dsgMsg);
                   // }
 
-                  // ApplyDeltas(checkpointChanges, notificationChanges, deliveredMessageChanges,
-                  //             discardedMessageChanges);
-                  // Console.WriteLine("State {0} {1} {2} {3}",
-                  //                   checkpointState.Count,
-                  //                   notificationState.Count,
-                  //                   delivMsgState.Count,
-                  //                   discMsgState.Count);
+                  ApplyDeltas(checkpointChanges, notificationChanges, deliveredMessageChanges,
+                              discardedMessageChanges);
+                  Console.WriteLine("State {0} {1} {2} {3}",
+                                    checkpointState.Count,
+                                    notificationState.Count,
+                                    delivMsgState.Count,
+                                    discMsgState.Count);
                   var stopwatch = System.Diagnostics.Stopwatch.StartNew();
                   checkpointStream.OnNext(checkpointChanges);
                   deliveredNotifications.OnNext(notificationChanges);
