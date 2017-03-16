@@ -1723,26 +1723,21 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
 
               this.currentFrontiers = new HashSet<Frontier>();
 
-              var frontiers = initial;
-              while (true)
-              {
-                var reducedDiscards = frontiers
-                  .ReduceForDiscarded(
-                     checkpointInputStream, discMessageInputStream, this);
-                var reduced = frontiers
-                  .Reduce(checkpointInputStream, delivMessageInputStream, delivNotifInputStream, graphInputStream, this);
-                frontiers = reduced.Concat(reducedDiscards).Concat(frontiers)
-                  .Min2(ff => (ff.node.denseId + (ff.isNotification ? 0x10000 : 0)), ff => ff.frontier.value)
-                  .Select(fff => fff.Second);
-                int frontierDiff = 0;
-                initial.Except(frontiers).Subscribe(x => frontierDiff += 1);
-                frontiers.Except(initial).Subscribe(x => frontierDiff += 1);
-                if (frontierDiff == 0)
-                {
-                  break;
-                }
-                initial = frontiers;
-              }
+              var frontiers = initial
+                .Iterate((c, f) =>
+                  {
+                    var reducedDiscards = f
+                      .ReduceForDiscarded(c.EnterLoop(checkpointInputStream),
+                                          c.EnterLoop(discMessageInputStream), this);
+                    var reduced = f
+                      .Reduce(c.EnterLoop(checkpointInputStream),
+                              c.EnterLoop(delivMessageInputStream),
+                              c.EnterLoop(delivNotifInputStream),
+                              c.EnterLoop(graphInputStream), this);
+                    return reduced.Concat(reducedDiscards).Concat(f)
+                      .Min2(ff => (ff.node.denseId + (ff.isNotification ? 0x10000 : 0)), ff => ff.frontier.value)
+                    .Select(fff => fff.Second);
+                  }, 20, "ComputeFrontiers");
 
               var sync = frontiers.Subscribe(changes => ReactToFrontiers(changes));
 
