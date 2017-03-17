@@ -117,6 +117,7 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
 
         private List<Stage> denseStages;
         internal List<Stage> DenseStages { get { return this.denseStages; } }
+        private List<Edge> edges;
 
         // Used to transform from StageIds to DenseStageIds.
         private int[] toDenseStage;
@@ -471,7 +472,7 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
                 this.nodeState[edgeList.First].discardedMessages.Add(edgeList.Second, new DiscardList());
             }
 
-            List<Edge> edges = args.edges.Select(e => new Edge
+            edges = args.edges.Select(e => new Edge
             {
                 src = new SV(this.toDenseStage[e.First.First], e.First.Second),
                 dst = new SV(this.toDenseStage[e.Second.First], e.Second.Second)
@@ -516,11 +517,6 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
               this.graph.OnNext(edges);
               this.graph.OnCompleted();
             }
-            else
-            {
-              this.graphInput.OnNext(edges);
-              this.graphInput.OnCompleted();
-            }
 
             List<Checkpoint> checkpoints = new List<Checkpoint>();;
             List<Notification> notificationChanges = new List<Notification>();
@@ -557,6 +553,7 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
               this.deliveredMessagesInput.OnNext();
               this.deliveredNotificationsInput.OnNext();
               this.discardedMessagesInput.OnNext();
+              this.graphInput.OnNext(edges);
             }
             ++this.epoch;
         }
@@ -1192,7 +1189,9 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
                   this.deliveredMessagesInput.OnNext(delivMsgState.ToList());
                   this.deliveredNotificationsInput.OnNext(notifState.ToList());
                   this.discardedMessagesInput.OnNext(discMsgState.ToList());
+                  this.graphInput.OnNext(edges);
                 }
+                this.WriteLog("InjectUpdates OnNext epoch " + this.epoch);
                 ++this.epoch;
             }
 
@@ -1243,7 +1242,9 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
               this.deliveredMessagesInput.OnNext(delivMsgState.ToList());
               this.deliveredNotificationsInput.OnNext(notifState.ToList());
               this.discardedMessagesInput.OnNext(discMsgState.ToList());
+              this.graphInput.OnNext(edges);
             }
+            this.WriteLog("InjectRollbackUpdates OnNext epoch " + this.epoch);
             ++this.epoch;
         }
 
@@ -1723,21 +1724,33 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
 
               this.currentFrontiers = new HashSet<Frontier>();
 
-              var frontiers = initial
-                .Iterate((c, f) =>
-                  {
-                    var reducedDiscards = f
-                      .ReduceForDiscarded(c.EnterLoop(checkpointInputStream),
-                                          c.EnterLoop(discMessageInputStream), this);
-                    var reduced = f
-                      .Reduce(c.EnterLoop(checkpointInputStream),
-                              c.EnterLoop(delivMessageInputStream),
-                              c.EnterLoop(delivNotifInputStream),
-                              c.EnterLoop(graphInputStream), this);
-                    return reduced.Concat(reducedDiscards).Concat(f)
-                      .Min2(ff => (ff.node.denseId + (ff.isNotification ? 0x10000 : 0)), ff => ff.frontier.value)
-                    .Select(fff => fff.Second);
-                  }, 20, "ComputeFrontiers");
+              var frontiers = initial;
+                // .Iterate((c, f) =>
+                //   {
+                //     var reducedDiscards = f
+                //       .ReduceForDiscarded(c.EnterLoop(checkpointInputStream),
+                //                           c.EnterLoop(discMessageInputStream), this);
+                //     var reduced = f
+                //       .Reduce(c.EnterLoop(checkpointInputStream),
+                //               c.EnterLoop(delivMessageInputStream),
+                //               c.EnterLoop(delivNotifInputStream),
+                //               c.EnterLoop(graphInputStream), this);
+                //     return reduced.Concat(reducedDiscards).Concat(f)
+                //       .Min2(ff => (ff.node.denseId + (ff.isNotification ? 0x10000 : 0)), ff => ff.frontier.value)
+                //     .Select(fff => fff.Second);
+                //   }, 10, "ComputeFrontiers");
+
+              for (int fi = 0; fi < 20; fi++)
+              {
+                var reducedDiscards = frontiers
+                  .ReduceForDiscarded(checkpointInputStream, discMessageInputStream, this);
+                var reduced = frontiers
+                  .Reduce(checkpointInputStream, delivMessageInputStream,
+                          delivNotifInputStream, graphInputStream, this);
+                frontiers = reduced.Concat(reducedDiscards).Concat(frontiers)
+                  .Min2(ff => (ff.node.denseId + (ff.isNotification ? 0x10000 : 0)), ff => ff.frontier.value)
+                  .Select(fff => fff.Second);
+              }
 
               var sync = frontiers.Subscribe(changes => ReactToFrontiers(changes));
 
@@ -1772,6 +1785,7 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
               deliveredMessagesInput.OnCompleted();
               deliveredNotificationsInput.OnCompleted();
               discardedMessagesInput.OnCompleted();
+              graphInput.OnCompleted();
 
               reconciliation.Join();
             }

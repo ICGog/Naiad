@@ -598,24 +598,6 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
                                            discardedMessageChanges);
                 if (readData)
                 {
-                  // Console.WriteLine("====================== Epoch {0} ========", epoch);
-                  // foreach (Weighted<Checkpoint> checkpoint in checkpointChanges)
-                  // {
-                  //   Console.WriteLine("AAA: {0}", checkpoint);
-                  // }
-                  // foreach (Weighted<Notification> notification in notificationChanges)
-                  // {
-                  //   Console.WriteLine("BBB: {0}", notification);
-                  // }
-                  // foreach (Weighted<DeliveredMessage> delivMsg in deliveredMessageChanges)
-                  // {
-                  //   Console.WriteLine("CCC: {0}", delivMsg);
-                  // }
-                  // foreach (Weighted<DiscardedMessage> dsgMsg in discardedMessageChanges)
-                  // {
-                  //   Console.WriteLine("DDD: {0}", dsgMsg);
-                  // }
-
                   ApplyDeltas(checkpointChanges, notificationChanges, deliveredMessageChanges,
                               discardedMessageChanges);
                   Console.WriteLine("State {0} {1} {2} {3}",

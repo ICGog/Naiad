@@ -190,11 +190,10 @@ namespace FaultToleranceExamples.ReplayScratchComplexFTWorkflow
         .Where(c => !c.First.checkpoint.Contains(c.Second))
         // and select the largest feasible checkpoint at each node
         .Max2(c => c.First.node.denseId, c => c.First.checkpoint.value)
-        .Select(c => c.Second)
         // then convert it to a pair of frontiers
         .SelectMany(c => new Frontier[] {
-            new Frontier(c.First.node, c.First.checkpoint, false),
-            new Frontier(c.First.node, c.First.checkpoint, true) });
+            new Frontier(c.Second.First.node, c.Second.First.checkpoint, false),
+            new Frontier(c.Second.First.node, c.Second.First.checkpoint, true) });
 
       // return any reduction in either frontier
       return reducedFrontiers.Concat(intersectedProjectedNotificationFrontiers);
@@ -504,22 +503,33 @@ namespace FaultToleranceExamples.ReplayScratchComplexFTWorkflow
               new Frontier(c.Second.node, c.Second.checkpoint, false),
               new Frontier(c.Second.node, c.Second.checkpoint, true) });
 
-        var frontiers = initial
-          .IterateAndAccumulate((c, f) =>
-            {
-              var reducedDiscards = f
-                .ReduceForDiscarded(c.EnterLoop(checkpointStream),
-                                    c.EnterLoop(discardedMessages), this);
-              var reduced = f
-                .Reduce(c.EnterLoop(checkpointStream),
-                        c.EnterLoop(deliveredMessages),
-                        c.EnterLoop(deliveredNotifications),
-                        c.EnterLoop(graph), this);
-              return reduced.Concat(reducedDiscards).Concat(f)
-                .Min2(ff => (ff.node.denseId + (ff.isNotification ? 0x10000 : 0)), ff => ff.frontier.value)
-                .Select(fff => fff.Second);
-            }, Int32.MaxValue, "ComputeFrontiers");
+        // var frontiers = initial
+        //   .Iterate((c, f) =>
+        //     {
+        //       var reducedDiscards = f
+        //         .ReduceForDiscarded(c.EnterLoop(checkpointStream),
+        //                             c.EnterLoop(discardedMessages), this);
+        //       var reduced = f
+        //         .Reduce(c.EnterLoop(checkpointStream),
+        //                 c.EnterLoop(deliveredMessages),
+        //                 c.EnterLoop(deliveredNotifications),
+        //                 c.EnterLoop(graph), this);
+        //       return reduced.Concat(reducedDiscards).Concat(f)
+        //         .Min2(ff => (ff.node.denseId + (ff.isNotification ? 0x10000 : 0)), ff => ff.frontier.value)
+        //         .Select(fff => fff.Second);
+        //     },  Int32.MaxValue, "ComputeFrontiers");
 
+        var frontiers = initial;
+        for (int fi = 0; fi < 20; fi++)
+        {
+          var reducedDiscards = frontiers
+            .ReduceForDiscarded(checkpointStream, discardedMessages, this);
+          var reduced = frontiers
+            .Reduce(checkpointStream, deliveredMessages, deliveredNotifications, graph, this);
+          frontiers = reduced.Concat(reducedDiscards).Concat(frontiers)
+            .Min2(ff => (ff.node.denseId + (ff.isNotification ? 0x10000 : 0)), ff => ff.frontier.value)
+            .Select(fff => fff.Second);
+        }
 
         frontiers.Subscribe(l => { } );
         computation.Activate();
@@ -557,7 +567,8 @@ namespace FaultToleranceExamples.ReplayScratchComplexFTWorkflow
                   edge.Restore2(onNextGraphReader);
                   edges.Add(edge);
                 }
-                graphInput.OnNext(edges);
+                for (int i = 0; i < replayNumEpochs; ++i)
+                  graphInput.OnNext(edges);
               }
             }
           }
@@ -633,7 +644,6 @@ namespace FaultToleranceExamples.ReplayScratchComplexFTWorkflow
           deliveredMessagesInput.OnCompleted();
           deliveredNotificationsInput.OnCompleted();
           discardedMessagesInput.OnCompleted();
-
           computation.Join();
         }
       }
