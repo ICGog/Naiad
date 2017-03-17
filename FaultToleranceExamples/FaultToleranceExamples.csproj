@@ -3,6 +3,8 @@
   <Import Project="..\packages\Microsoft.Research.Peloponnese.AzureStorage.0.8.1-beta\build\Microsoft.Research.Peloponnese.AzureStorage.props" Condition="Exists('..\packages\Microsoft.Research.Peloponnese.AzureStorage.0.8.1-beta\build\Microsoft.Research.Peloponnese.AzureStorage.props')" />
   <Import Project="..\packages\Microsoft.Research.Peloponnese.Utils.0.8.1-beta\build\Microsoft.Research.Peloponnese.Utils.props" Condition="Exists('..\packages\Microsoft.Research.Peloponnese.Utils.0.8.1-beta\build\Microsoft.Research.Peloponnese.Utils.props')" />
   <Import Project="..\packages\Microsoft.Research.Peloponnese.Shared.0.8.1-beta\build\Microsoft.Research.Peloponnese.Shared.props" Condition="Exists('..\packages\Microsoft.Research.Peloponnese.Shared.0.8.1-beta\build\Microsoft.Research.Peloponnese.Shared.props')" />
+  <Import Project="..\packages\Microsoft.Research.Peloponnese.Hadoop.0.8.1-beta\build\Microsoft.Research.Peloponnese.Hadoop.props" Condition="Exists('..\packages\Microsoft.Research.Peloponnese.Hadoop.0.8.1-beta\build\Microsoft.Research.Peloponnese.Hadoop.props')" />
+
   <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
@@ -100,6 +102,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AzureStreamSequence.cs" />
+    <Compile Include="HdfsStreamSequence.cs" />
     <Compile Include="ComplexFTWorkflow.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="ReplayComplexFTWorkflow.cs" />
@@ -149,13 +152,16 @@
     </PropertyGroup>
     <Error Condition="!Exists('$(SolutionDir)\.nuget\NuGet.targets')" Text="$([System.String]::Format('$(ErrorText)', '$(SolutionDir)\.nuget\NuGet.targets'))" />
     <Error Condition="!Exists('..\packages\Microsoft.Research.Peloponnese.Shared.0.8.1-beta\build\Microsoft.Research.Peloponnese.Shared.props')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\Microsoft.Research.Peloponnese.Shared.0.8.1-beta\build\Microsoft.Research.Peloponnese.Shared.props'))" />
+    <Error Condition="!Exists('..\packages\Microsoft.Research.Peloponnese.Hadoop.0.8.1-beta\build\Microsoft.Research.Peloponnese.Hadoop.props')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\Microsoft.Research.Peloponnese.Hadoop.0.8.1-beta\build\Microsoft.Research.Peloponnese.Hadoop.props'))" />
     <Error Condition="!Exists('..\packages\Microsoft.Research.Peloponnese.Shared.0.8.1-beta\build\Microsoft.Research.Peloponnese.Shared.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\Microsoft.Research.Peloponnese.Shared.0.8.1-beta\build\Microsoft.Research.Peloponnese.Shared.targets'))" />
+    <Error Condition="!Exists('..\packages\Microsoft.Research.Peloponnese.Hadoop.0.8.1-beta\build\Microsoft.Research.Peloponnese.Hadoop.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\Microsoft.Research.Peloponnese.Hadoop.0.8.1-beta\build\Microsoft.Research.Peloponnese.Hadoop.targets'))" />
     <Error Condition="!Exists('..\packages\Microsoft.Research.Peloponnese.Utils.0.8.1-beta\build\Microsoft.Research.Peloponnese.Utils.props')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\Microsoft.Research.Peloponnese.Utils.0.8.1-beta\build\Microsoft.Research.Peloponnese.Utils.props'))" />
     <Error Condition="!Exists('..\packages\Microsoft.Research.Peloponnese.Utils.0.8.1-beta\build\Microsoft.Research.Peloponnese.Utils.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\Microsoft.Research.Peloponnese.Utils.0.8.1-beta\build\Microsoft.Research.Peloponnese.Utils.targets'))" />
     <Error Condition="!Exists('..\packages\Microsoft.Research.Peloponnese.AzureStorage.0.8.1-beta\build\Microsoft.Research.Peloponnese.AzureStorage.props')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\Microsoft.Research.Peloponnese.AzureStorage.0.8.1-beta\build\Microsoft.Research.Peloponnese.AzureStorage.props'))" />
     <Error Condition="!Exists('..\packages\Microsoft.Research.Peloponnese.AzureStorage.0.8.1-beta\build\Microsoft.Research.Peloponnese.AzureStorage.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\Microsoft.Research.Peloponnese.AzureStorage.0.8.1-beta\build\Microsoft.Research.Peloponnese.AzureStorage.targets'))" />
   </Target>
   <Import Project="..\packages\Microsoft.Research.Peloponnese.Shared.0.8.1-beta\build\Microsoft.Research.Peloponnese.Shared.targets" Condition="Exists('..\packages\Microsoft.Research.Peloponnese.Shared.0.8.1-beta\build\Microsoft.Research.Peloponnese.Shared.targets')" />
+  <Import Project="..\packages\Microsoft.Research.Peloponnese.Hadoop.0.8.1-beta\build\Microsoft.Research.Peloponnese.Hadoop.targets" Condition="Exists('..\packages\Microsoft.Research.Peloponnese.Hadoop.0.8.1-beta\build\Microsoft.Research.Peloponnese.Hadoop.targets')" />
   <Import Project="..\packages\Microsoft.Research.Peloponnese.Utils.0.8.1-beta\build\Microsoft.Research.Peloponnese.Utils.targets" Condition="Exists('..\packages\Microsoft.Research.Peloponnese.Utils.0.8.1-beta\build\Microsoft.Research.Peloponnese.Utils.targets')" />
   <Import Project="..\packages\Microsoft.Research.Peloponnese.AzureStorage.0.8.1-beta\build\Microsoft.Research.Peloponnese.AzureStorage.targets" Condition="Exists('..\packages\Microsoft.Research.Peloponnese.AzureStorage.0.8.1-beta\build\Microsoft.Research.Peloponnese.AzureStorage.targets')" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

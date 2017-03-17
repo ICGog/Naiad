@@ -42,6 +42,7 @@ using Microsoft.Research.Naiad.FaultToleranceManager;
 using Microsoft.Research.Naiad.Serialization;
 
 using Microsoft.Research.Naiad.Examples.DifferentialDataflow;
+using Microsoft.Research.Peloponnese.Hdfs;
 
 namespace FaultToleranceExamples.ComplexFTWorkflow
 {
@@ -1862,6 +1863,8 @@ namespace FaultToleranceExamples.ComplexFTWorkflow
             this.config.MaxLatticeInternStaleTimes = 10;
 
             bool useAzure = false;
+            bool useHdfs = false;
+            string hdfsNameNode = "";
             string logPrefix = "";
             int managerWorkerCount = 1;
             bool minimalLogging = false;
@@ -1950,6 +1953,12 @@ namespace FaultToleranceExamples.ComplexFTWorkflow
                         ++i;
                         break;
 
+                    case "-hdfs":
+                        useHdfs = true;
+                        hdfsNameNode = args[i + 1];
+                        i += 2;
+                        break;
+
                     case "-slowbase":
                         slowBase = Int32.Parse(args[i + 1]);
                         i += 2;
@@ -2026,6 +2035,11 @@ namespace FaultToleranceExamples.ComplexFTWorkflow
                     accountKey = defaultAccount.Credentials.ExportBase64EncodedKey();
                 }
                 this.config.CheckpointingFactory = s => new AzureStreamSequence(accountName, accountKey, containerName, s);
+            }
+            else if (useHdfs)
+            {
+              string hdfsDir = hdfsNameNode + logPrefix;
+              this.config.CheckpointingFactory = s => new HdfsStreamSequence(hdfsDir, "checkpoint");
             }
             else
             {
