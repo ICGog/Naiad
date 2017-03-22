@@ -120,9 +120,9 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
         private const long AMASK = (long)AMAX << (BBITS + CBITS);
         private const long BMASK = (long)BMAX << CBITS;
         private const long CMASK = (long)CMAX;
-        private int a { get { return (int)(value >> (BBITS + CBITS)); } }
-        private int b { get { return (int)((value & BMASK) >> CBITS); } }
-        private int c { get { return (int)(value & CMASK); } }
+        public int a { get { return (int)(value >> (BBITS + CBITS)); } }
+        public int b { get { return (int)((value & BMASK) >> CBITS); } }
+        public int c { get { return (int)(value & CMASK); } }
 
         public void Checkpoint2(NaiadWriter writer)
         {

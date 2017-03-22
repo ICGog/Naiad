@@ -495,8 +495,15 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
               new Frontier(c.node, c.checkpoint, false),
               new Frontier(c.node, c.checkpoint, true) });
         var beginWatch = System.Diagnostics.Stopwatch.StartNew();
+        // var frontiers = initial;
+        // var reducedDiscards = frontiers.ReduceForDiscarded(checkpointStream, discardedMessages, this);
+        // var reduced = frontiers .Reduce(
+        //           checkpointStream, deliveredMessages,
+        //           deliveredNotifications, graph, this);
+        // frontiers = reduced.Concat(reducedDiscards).Concat(frontiers)
+        //   .Min(ff => (ff.node.denseId + (ff.isNotification ? 0x10000 : 0)), ff => ff.frontier.value);
         var frontiers = initial
-          .FixedPoint((c, f) =>
+          .GeneralFixedPoint((c, f) =>
             {
               var reducedDiscards = f
                 .ReduceForDiscarded(
@@ -511,9 +518,43 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
 //              reduced.Print("reduced", beginWatch);
               return reduced.Concat(reducedDiscards).Concat(f)
                 .Min(ff => (ff.node.denseId + (ff.isNotification ? 0x10000 : 0)), ff => ff.frontier.value);
-            })
+            },
+//          f => (int)(f.frontier.value),
+//                             f => (int)(f.frontier.value >> 42),
+                             f => f.frontier.a / 2,
+          f => f.node.denseId,
+          Int32.MaxValue,
+          CheckpointType.Stateless)
           .Consolidate();
-        frontiers.Subscribe(l => {  } );
+
+//           .FixedPoint((c, f) =>
+//             {
+//               var reducedDiscards = f
+//                 .ReduceForDiscarded(
+//                   checkpointStream.EnterLoop(c),
+//                   discardedMessages.EnterLoop(c), this);
+// //              reducedDiscards.Print("reducedDiscards", beginWatch);
+//               var reduced = f
+//                 .Reduce(
+//                   checkpointStream.EnterLoop(c), deliveredMessages.EnterLoop(c),
+//                   deliveredNotifications.EnterLoop(c), graph.EnterLoop(c),
+//                   this);
+// //              reduced.Print("reduced", beginWatch);
+//               return reduced.Concat(reducedDiscards).Concat(f)
+//                 .Min(ff => (ff.node.denseId + (ff.isNotification ? 0x10000 : 0)), ff => ff.frontier.value);
+//             })
+//           .Consolidate();
+//        frontiers.Subscribe(l => {  } );
+        HashSet<Frontier> frontierState = new HashSet<Frontier>();
+        frontiers.Subscribe(l => {
+            foreach (Weighted<Frontier> frontier in l)
+            {
+              if (frontier.weight == 1)
+                frontierState.Add(frontier.record);
+              else if (frontier.weight == -1)
+                frontierState.Remove(frontier.record);
+            }
+          });
         computation.Activate();
 
 
@@ -627,6 +668,10 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
           discardedMessages.OnCompleted();
 
           computation.Join();
+          foreach (Frontier frontier in frontierState)
+          {
+//            Console.WriteLine("Frontier: {0}", frontier);
+          }
         }
       }
     }
