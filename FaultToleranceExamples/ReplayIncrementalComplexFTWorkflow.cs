@@ -320,14 +320,6 @@ namespace FaultToleranceExamples.ReplayIncrementalComplexFTWorkflow
       return (edge.First << 16) + edge.Second.denseId;
     }
 
-    public void ComputeFrontiers(List<Weighted<Edge>> graphChanges,
-                                 List<Weighted<Checkpoint>> checkpointChanges,
-                                 List<Weighted<Notification>> notifChanges,
-                                 List<Weighted<DeliveredMessage>> delivMsgChanges,
-                                 List<Weighted<DiscardedMessage>> discMsgChanges)
-    {
-    }
-
     private List<Frontier> ReduceForDiscardedScratch(List<Frontier> frontiers,
                                                      List<Checkpoint> checkpoints,
                                                      List<DiscardedMessage> discMsgs)
@@ -531,12 +523,24 @@ namespace FaultToleranceExamples.ReplayIncrementalComplexFTWorkflow
                               }
                               return maxRes;
                             });
-      var initial =
+      var frontiers =
         maxCheckpoints.SelectMany(c => new Frontier[] {
           new Frontier(c.node, c.checkpoint, false),
           new Frontier(c.node, c.checkpoint, true) }).ToList();
 
-      var frontiers = initial;
+      Dictionary<SV, Frontier> currentFrontiers = new Dictionary<SV, Frontier>();
+      Dictionary<SV, Frontier> currentNFrontiers = new Dictionary<SV, Frontier>();
+      foreach (Frontier frontier in frontiers)
+      {
+        if (frontier.isNotification)
+        {
+          currentNFrontiers.Add(frontier.node, frontier);
+        }
+        else
+        {
+          currentFrontiers.Add(frontier.node, frontier);
+        }
+      }
       int numIterations = 0;
       while (true)
       {
@@ -560,40 +564,39 @@ namespace FaultToleranceExamples.ReplayIncrementalComplexFTWorkflow
                                            return minF;
                                          }).ToList();
 
-        HashSet<Frontier> frontierSet = new HashSet<Frontier>();
-        int frontierCnt = 0;
+        List<Frontier> newFrontiers = new List<Frontier>();
+        int numNewFrontiers = 0;
         foreach (Frontier frontier in frontiers)
         {
-          frontierSet.Add(frontier);
-          frontierCnt++;
-        }
-        bool frontiersEqual = true;
-        int initialCnt = 0;
-        foreach (Frontier frontier in initial)
-        {
-          bool added = frontierSet.Add(frontier);
-          if (added)
+          if (frontier.isNotification)
           {
-            frontiersEqual = false;
-            break;
+            if (!frontier.frontier.Contains(currentNFrontiers[frontier.node].frontier))
+            {
+              currentNFrontiers[frontier.node] = frontier;
+              newFrontiers.Add(frontier);
+              numNewFrontiers++;
+            }
           }
-          initialCnt++;
-        }
-        if (frontiersEqual && initialCnt != frontierCnt)
-        {
-            frontiersEqual = false;
+          else
+          {
+            if (!frontier.frontier.Contains(currentFrontiers[frontier.node].frontier))
+            {
+              currentFrontiers[frontier.node] = frontier;
+              newFrontiers.Add(frontier);
+              numNewFrontiers++;
+            }
+          }
         }
         numIterations++;
         Console.WriteLine("Frontier equality: {0}", stopwatch.ElapsedMilliseconds);
-        if (frontiersEqual)
+        if (numNewFrontiers == 0)
         {
           Console.Error.WriteLine("Done num iterations {0} {1}", numIterations, stopwatch.ElapsedMilliseconds
 );
           break;
         }
-        initial = frontiers;
       }
-      return frontiers;
+      return currentFrontiers.Values.Concat(currentNFrontiers.Values).ToList();
     }
 
     public void Execute(string[] args)
@@ -633,7 +636,6 @@ namespace FaultToleranceExamples.ReplayIncrementalComplexFTWorkflow
       this.notificationState = new HashSet<Notification>();
       this.delivMsgState = new HashSet<DeliveredMessage>();
       this.discMsgState = new HashSet<DiscardedMessage>();
-
 
       SerializationFormat serFormat =
         SerializationFactory.GetCodeGeneratorForVersion(this.config.SerializerVersion.First,
@@ -733,6 +735,13 @@ namespace FaultToleranceExamples.ReplayIncrementalComplexFTWorkflow
                                                         discMsgState.ToList());
                 Console.Error.WriteLine("Time to process epoch {0}: {1} {2} {3} {4} {5}", curEpoch, stopwatch.ElapsedMilliseconds, checkpointChanges.Count, notificationChanges.Count, deliveredMessageChanges.Count, discardedMessageChanges.Count);
                 curEpoch++;
+                if (curEpoch == replayNumEpochs)
+                {
+                  foreach (Frontier frontier in frontiers)
+                  {
+//                    Console.WriteLine("Frontier: {0}", frontier);
+                  }
+                }
               } else
               {
                 break;
