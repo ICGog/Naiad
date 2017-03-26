@@ -792,6 +792,228 @@ namespace FaultToleranceExamples.ReplayIncrementalComplexFTWorkflow
             new Frontier(c.node, c.checkpoint, true) }).ToList();
     }
 
+
+    public List<Frontier> ComputeFrontiersMicroBatchSingleThread(
+        System.Diagnostics.Stopwatch stopwatch,
+        List<Edge> graph,
+        List<Checkpoint> checkpoints,
+        List<Notification> notifications,
+        List<DeliveredMessage> delivMsgs,
+        List<DiscardedMessage> discMsgs)
+    {
+      var frontiers = MaxFrontierPerVertex(checkpoints);
+      int numIterations = 0;
+      Dictionary<SV, Frontier> currentFrontiers = new Dictionary<SV, Frontier>();
+      Dictionary<SV, Frontier> currentNFrontiers = new Dictionary<SV, Frontier>();
+      Dictionary<int, Frontier> minStageFrontier = new Dictionary<int, Frontier>();
+      Dictionary<int, bool> doneMinStageFrontier = new Dictionary<int, bool>();
+      Dictionary<int, Frontier> minStageNFrontier = new Dictionary<int, Frontier>();
+      Stack<Frontier> toProcess = new Stack<Frontier>();
+      foreach (Frontier frontier in frontiers)
+      {
+        toProcess.Push(frontier);
+        if (frontier.isNotification)
+        {
+          currentNFrontiers.Add(frontier.node, frontier);
+          Frontier minFrontier;
+          bool found = minStageNFrontier.TryGetValue(frontier.node.DenseStageId, out minFrontier);
+          if (!found)
+          {
+            minStageNFrontier.Add(frontier.node.DenseStageId, frontier);
+          }
+          else
+          {
+            if (minFrontier.frontier.value > frontier.frontier.value)
+            {
+              minStageNFrontier[frontier.node.DenseStageId] = frontier;
+            }
+          }
+        }
+        else
+        {
+          currentFrontiers.Add(frontier.node, frontier);
+          Frontier minFrontier;
+          bool found = minStageFrontier.TryGetValue(frontier.node.DenseStageId, out minFrontier);
+          if (!found)
+          {
+            minStageFrontier.Add(frontier.node.DenseStageId, frontier);
+            doneMinStageFrontier.Add(frontier.node.DenseStageId, false);
+          }
+          else
+          {
+            if (minFrontier.frontier.value > frontier.frontier.value)
+            {
+              minStageFrontier[frontier.node.DenseStageId] = frontier;
+            }
+          }
+        }
+      }
+
+      Dictionary<int, List<Checkpoint>> checkpointsPerVertex =
+        new Dictionary<int, List<Checkpoint>>();
+      foreach (Checkpoint checkpoint in checkpoints)
+      {
+        if (checkpointsPerVertex.ContainsKey(checkpoint.node.denseId))
+        {
+          checkpointsPerVertex[checkpoint.node.denseId].Add(checkpoint);
+        }
+        else
+        {
+          List<Checkpoint> chks = new List<Checkpoint>();
+          chks.Add(checkpoint);
+          checkpointsPerVertex.Add(checkpoint.node.denseId, chks);
+        }
+      }
+
+      Dictionary<int, List<Notification>> notifsPerVertex =
+        new Dictionary<int, List<Notification>>();
+      foreach (Notification notif in notifications)
+      {
+        if (notifsPerVertex.ContainsKey(notif.node.denseId))
+        {
+          notifsPerVertex[notif.node.denseId].Add(notif);
+        }
+        else
+        {
+          List<Notification> notifs = new List<Notification>();
+          notifs.Add(notif);
+          notifsPerVertex.Add(notif.node.denseId, notifs);
+        }
+      }
+
+      Dictionary<int, List<DiscardedMessage>> discMsgPerStage =
+        new Dictionary<int, List<DiscardedMessage>>();
+      for (int i = 0; i < stageLenghts.Count; ++i)
+      {
+        discMsgPerStage.Add(i, new List<DiscardedMessage>());
+      }
+      foreach (DiscardedMessage discMsg in discMsgs)
+      {
+        discMsgPerStage[discMsg.dstDenseStage].Add(discMsg);
+      }
+
+      Dictionary<int, List<Edge>> edgesPerVertex =
+        new Dictionary<int, List<Edge>>();
+      foreach (Edge edge in graph)
+      {
+        if (edgesPerVertex.ContainsKey(edge.src.denseId))
+        {
+          edgesPerVertex[edge.src.denseId].Add(edge);
+        }
+        else
+        {
+          List<Edge> edges = new List<Edge>();
+          edges.Add(edge);
+          edgesPerVertex.Add(edge.src.denseId, edges);
+        }
+      }
+
+      Dictionary<int, List<LexStamp>> delivDstTimePerEdgeKey =
+        new Dictionary<int, List<LexStamp>>();
+
+      foreach (DeliveredMessage delivMsg in delivMsgs)
+      {
+        var edgeKey = EdgeKey(delivMsg.srcDenseStage.PairWith(delivMsg.dst));
+        if (delivDstTimePerEdgeKey.ContainsKey(edgeKey))
+        {
+          delivDstTimePerEdgeKey[edgeKey].Add(delivMsg.dstTime);
+        }
+        else
+        {
+          List<LexStamp> dstTimes = new List<LexStamp>();
+          dstTimes.Add(delivMsg.dstTime);
+          delivDstTimePerEdgeKey.Add(edgeKey, dstTimes);
+        }
+      }
+      int numVisited = 0;
+      while (toProcess.Count > 0)
+      {
+        Frontier curFrontier = toProcess.Pop();
+        List<Frontier> allNewFrontiers = new List<Frontier>();
+        if (curFrontier.isNotification)
+        {
+          if (currentNFrontiers[curFrontier.node].frontier.Contains(curFrontier.frontier))
+          {
+            numVisited++;
+            allNewFrontiers = ReduceMicroNotif(curFrontier, edgesPerVertex, notifsPerVertex, checkpointsPerVertex)
+              .GroupBy(ff => (ff.node.denseId + (ff.isNotification ? 0x10000 : 0)),
+                       x => x,
+                       (did, fs) => {
+                         Frontier minF = fs.First();
+                         foreach (var fff in fs)
+                           {
+                             if (fff.frontier.value < minF.frontier.value)
+                               {
+                                 minF = fff;
+                               }
+                           }
+                         return minF;
+                       }).ToList();
+          }
+        }
+        else
+        {
+          if (currentFrontiers[curFrontier.node].frontier.Contains(curFrontier.frontier))
+          {
+            numVisited++;
+            List<Frontier> reducedDiscards = new List<Frontier>();
+            if (minStageFrontier[curFrontier.node.DenseStageId].frontier.value > curFrontier.frontier.value ||
+                (minStageFrontier[curFrontier.node.DenseStageId].frontier.value == curFrontier.frontier.value &&
+                 doneMinStageFrontier[curFrontier.node.DenseStageId] == false)) {
+              minStageFrontier[curFrontier.node.DenseStageId] = curFrontier;
+              doneMinStageFrontier[curFrontier.node.DenseStageId] = true;
+              reducedDiscards =
+                ReduceMicroForDiscarded(curFrontier, discMsgPerStage, checkpointsPerVertex);
+
+            }
+            List<Frontier> reduced =
+              ReduceMicroDeliv(curFrontier, edgesPerVertex, delivDstTimePerEdgeKey, checkpointsPerVertex);
+            allNewFrontiers = reduced.Concat(reducedDiscards)
+              .GroupBy(ff => (ff.node.denseId + (ff.isNotification ? 0x10000 : 0)),
+                       x => x,
+                       (did, fs) => {
+                         Frontier minF = fs.First();
+                         foreach (var fff in fs)
+                           {
+                             if (fff.frontier.value < minF.frontier.value)
+                               {
+                                 minF = fff;
+                               }
+                           }
+                         return minF;
+                       }).ToList();
+          }
+        }
+
+        foreach (Frontier frontier in allNewFrontiers)
+        {
+          if (frontier.isNotification)
+          {
+            if (!frontier.frontier.Contains(currentNFrontiers[frontier.node].frontier))
+            {
+              currentNFrontiers[frontier.node] = frontier;
+              toProcess.Push(frontier);
+            }
+          }
+          else
+          {
+            if (!frontier.frontier.Contains(currentFrontiers[frontier.node].frontier))
+            {
+              currentFrontiers[frontier.node] = frontier;
+              toProcess.Push(frontier);
+              if (minStageFrontier[frontier.node.DenseStageId].frontier.value >
+                  frontier.frontier.value) {
+                minStageFrontier[frontier.node.DenseStageId] = frontier;
+                doneMinStageFrontier[frontier.node.DenseStageId] = false;
+              }
+            }
+          }
+        }
+      }
+      Console.Error.WriteLine("NumVisited {0}", numVisited);
+      return currentFrontiers.Values.Concat(currentNFrontiers.Values).ToList();
+    }
+
     public List<Frontier> ComputeFrontiersMicroBatch(
         System.Diagnostics.Stopwatch stopwatch,
         List<Edge> graph,
@@ -924,63 +1146,69 @@ namespace FaultToleranceExamples.ReplayIncrementalComplexFTWorkflow
           delivDstTimePerEdgeKey.Add(edgeKey, dstTimes);
         }
       }
-
+      int numVisited = 0;
+      int numThreads = 48;
+      int numPerThread = 20;
+      ManualResetEvent[] doneEvents = new ManualResetEvent[numThreads];
+      for (int i = 0; i < numThreads; ++i)
+        doneEvents[i] = new ManualResetEvent(true);
+      UpdateFrontiers[] updateArray = new UpdateFrontiers[numThreads];
       while (toProcess.Count > 0)
       {
-        Frontier curFrontier = toProcess.Pop();
-        List<Frontier> allNewFrontiers = new List<Frontier>();
-        if (curFrontier.isNotification)
+        int curNumThreads = 0;
+        while (curNumThreads < numThreads && toProcess.Count > 0)
         {
-          if (currentNFrontiers[curFrontier.node].frontier.Contains(curFrontier.frontier))
+          int curNumPerThread = 0;
+          List<Pair<Frontier, bool>> toUpdate = new List<Pair<Frontier, bool>>();
+          while (toProcess.Count > 0 && curNumPerThread < numPerThread)
           {
-            allNewFrontiers = ReduceMicroNotif(curFrontier, edgesPerVertex, notifsPerVertex, checkpointsPerVertex)
-              .GroupBy(ff => (ff.node.denseId + (ff.isNotification ? 0x10000 : 0)),
-                       x => x,
-                       (did, fs) => {
-                         Frontier minF = fs.First();
-                         foreach (var fff in fs)
-                           {
-                             if (fff.frontier.value < minF.frontier.value)
-                               {
-                                 minF = fff;
-                               }
-                           }
-                         return minF;
-                       }).ToList();
-          }
-        }
-        else
-        {
-          if (currentFrontiers[curFrontier.node].frontier.Contains(curFrontier.frontier))
-          {
-            List<Frontier> reducedDiscards = new List<Frontier>();
-            if (minStageFrontier[curFrontier.node.DenseStageId].frontier.value > curFrontier.frontier.value ||
-                (minStageFrontier[curFrontier.node.DenseStageId].frontier.value == curFrontier.frontier.value &&
-                 doneMinStageFrontier[curFrontier.node.DenseStageId] == false)) {
-              minStageFrontier[curFrontier.node.DenseStageId] = curFrontier;
-              doneMinStageFrontier[curFrontier.node.DenseStageId] = true;
-              reducedDiscards =
-                ReduceMicroForDiscarded(curFrontier, discMsgPerStage, checkpointsPerVertex);
-
+            Frontier curFrontier = toProcess.Pop();
+            bool discarded = false;
+            if (curFrontier.isNotification)
+            {
+              if (currentNFrontiers[curFrontier.node].frontier.Contains(curFrontier.frontier))
+              {
+                numVisited++;
+                toUpdate.Add(curFrontier.PairWith(false));
+                curNumPerThread++;
+              }
             }
-            List<Frontier> reduced =
-              ReduceMicroDeliv(curFrontier, edgesPerVertex, delivDstTimePerEdgeKey, checkpointsPerVertex);
-            allNewFrontiers = reduced.Concat(reducedDiscards)
-              .GroupBy(ff => (ff.node.denseId + (ff.isNotification ? 0x10000 : 0)),
-                       x => x,
-                       (did, fs) => {
-                         Frontier minF = fs.First();
-                         foreach (var fff in fs)
-                           {
-                             if (fff.frontier.value < minF.frontier.value)
-                               {
-                                 minF = fff;
-                               }
-                           }
-                         return minF;
-                       }).ToList();
+            else
+            {
+              if (currentFrontiers[curFrontier.node].frontier.Contains(curFrontier.frontier))
+              {
+                numVisited++;
+                if (minStageFrontier[curFrontier.node.DenseStageId].frontier.value > curFrontier.frontier.value
+ ||
+                    (minStageFrontier[curFrontier.node.DenseStageId].frontier.value == curFrontier.frontier.value &&
+                     doneMinStageFrontier[curFrontier.node.DenseStageId] == false)) {
+                  minStageFrontier[curFrontier.node.DenseStageId] = curFrontier;
+                  doneMinStageFrontier[curFrontier.node.DenseStageId] = true;
+                  discarded = true;
+                }
+                toUpdate.Add(curFrontier.PairWith(discarded));
+                curNumPerThread++;
+              }
+            }
           }
+          doneEvents[curNumThreads] = new ManualResetEvent(false);
+          UpdateFrontiers updateF =
+            new UpdateFrontiers(toUpdate,
+                                doneEvents[curNumThreads],
+                                this,
+                                edgesPerVertex,
+                                notifsPerVertex,
+                                checkpointsPerVertex,
+                                discMsgPerStage,
+                                delivDstTimePerEdgeKey);
+          updateArray[curNumThreads] = updateF;
+          ThreadPool.QueueUserWorkItem(updateF.ThreadPoolCallback, curNumThreads);
+          curNumThreads++;
         }
+        WaitHandle.WaitAll(doneEvents);
+        for (int numThread = 0; numThread < curNumThreads; ++numThread)
+        {
+          var allNewFrontiers = updateArray[numThread].newFrontiers;
 
         foreach (Frontier frontier in allNewFrontiers)
         {
@@ -1007,7 +1235,10 @@ namespace FaultToleranceExamples.ReplayIncrementalComplexFTWorkflow
           }
         }
 
+        }
       }
+
+      Console.Error.WriteLine("NumVisited {0}", numVisited);
       return currentFrontiers.Values.Concat(currentNFrontiers.Values).ToList();
     }
 
