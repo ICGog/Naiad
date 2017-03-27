@@ -39,12 +39,11 @@ using Microsoft.Research.Naiad.Runtime.Progress;
 using Microsoft.Research.Naiad.Runtime.FaultTolerance;
 using Microsoft.Research.Naiad.FaultToleranceManager;
 using Microsoft.Research.Naiad.Serialization;
-//using FaultToleranceExamples.ReplayIncrementalComplexFTWorkflow;
 
 namespace FaultToleranceExamples
 {
 
-  public class UpdateFrontiers
+  public class MicroUpdateFrontiers
   {
     private List<Pair<Frontier, bool>> toUpdate;
     private ManualResetEvent doneEvent;
@@ -56,14 +55,14 @@ namespace FaultToleranceExamples
     private Dictionary<int, List<LexStamp>> delivDstTimePerEdgeKey;
     public List<Frontier> newFrontiers;
 
-    public UpdateFrontiers(List<Pair<Frontier, bool>> curToUpdate,
-                           ManualResetEvent doneEvent,
-                           ReplayIncrementalComplexFTWorkflow.ReplayIncrementalComplexFTWorkflow replay,
-                           Dictionary<int, List<Edge>> edgesPerVertex,
-                           Dictionary<int, List<Notification>> notifsPerVertex,
-                           Dictionary<int, List<Checkpoint>> checkpointsPerVertex,
-                           Dictionary<int, List<DiscardedMessage>> discMsgPerStage,
-                           Dictionary<int, List<LexStamp>> delivDstTimePerEdgeKey)
+    public MicroUpdateFrontiers(List<Pair<Frontier, bool>> curToUpdate,
+                                ManualResetEvent doneEvent,
+                                ReplayIncrementalComplexFTWorkflow.ReplayIncrementalComplexFTWorkflow replay,
+                                Dictionary<int, List<Edge>> edgesPerVertex,
+                                Dictionary<int, List<Notification>> notifsPerVertex,
+                                Dictionary<int, List<Checkpoint>> checkpointsPerVertex,
+                                Dictionary<int, List<DiscardedMessage>> discMsgPerStage,
+                                Dictionary<int, List<LexStamp>> delivDstTimePerEdgeKey)
     {
       toUpdate = curToUpdate;
       this.doneEvent = doneEvent;
@@ -92,20 +91,20 @@ namespace FaultToleranceExamples
       doneEvent.Set();
     }
 
-    public List<Frontier> UpdateMsgs(Frontier frontier, bool discarded)
+    public IEnumerable<Frontier> UpdateMsgs(Frontier frontier, bool discarded)
     {
-      List<Frontier> reducedDiscards = new List<Frontier>();
+      IEnumerable<Frontier> reducedDiscards = new List<Frontier>();
       if (discarded)
       {
         reducedDiscards = ReduceMicroForDiscarded(frontier,
                                                   discMsgPerStage,
                                                   checkpointsPerVertex);
       }
-      List<Frontier> reduced = ReduceMicroDeliv(frontier,
-                                                edgesPerVertex,
-                                                delivDstTimePerEdgeKey,
-                                                checkpointsPerVertex,
-                                                replay);
+      var reduced = ReduceMicroDeliv(frontier,
+                                     edgesPerVertex,
+                                     delivDstTimePerEdgeKey,
+                                     checkpointsPerVertex,
+                                     replay);
       return reduced.Concat(reducedDiscards)
         .GroupBy(ff => (ff.node.denseId + (ff.isNotification ? 0x10000 : 0)),
                  x => x,
@@ -119,10 +118,10 @@ namespace FaultToleranceExamples
                      }
                    }
                    return minF;
-                 }).ToList();
+                 });
     }
 
-    public List<Frontier> UpdateNotification(Frontier frontier)
+    public IEnumerable<Frontier> UpdateNotification(Frontier frontier)
     {
       return ReduceMicroNotif(frontier,
                               edgesPerVertex,
@@ -141,18 +140,18 @@ namespace FaultToleranceExamples
                      }
                    }
                    return minF;
-                 }).ToList();
+                 });
     }
 
-    public List<Frontier> ReduceMicroDeliv(Frontier curFrontier,
-                                           Dictionary<int, List<Edge>> edgesPerVertex,
-                                           Dictionary<int, List<LexStamp>> delivDstTimePerEdgeKey,
-                                           Dictionary<int, List<Checkpoint>> checkpointsPerVertex,
-                                           ReplayIncrementalComplexFTWorkflow.ReplayIncrementalComplexFTWorkflow replay)
+    public IEnumerable<Frontier> ReduceMicroDeliv(Frontier curFrontier,
+                                                  Dictionary<int, List<Edge>> edgesPerVertex,
+                                                  Dictionary<int, List<LexStamp>> delivDstTimePerEdgeKey,
+                                                  Dictionary<int, List<Checkpoint>> checkpointsPerVertex,
+                                                  ReplayIncrementalComplexFTWorkflow.ReplayIncrementalComplexFTWorkflow replay)
     {
       List<Edge> vEdges = new List<Edge>();
       bool found = edgesPerVertex.TryGetValue(curFrontier.node.denseId, out vEdges);
-      List<Pair<Pair<int, SV>, LexStamp>> projectedMessageFrontiers =
+      IEnumerable<Pair<Pair<int, SV>, LexStamp>> projectedMessageFrontiers =
         new List<Pair<Pair<int, SV>, LexStamp>>();
       if (found)
       {
@@ -174,7 +173,7 @@ namespace FaultToleranceExamples
                        }
                      }
                      return minPMF;
-                   }).ToList();
+                   });
       }
       List<Pair<SV, LexStamp>> staleDeliveredMsgs =
         new List<Pair<SV, LexStamp>>();
@@ -241,10 +240,10 @@ namespace FaultToleranceExamples
                              })
         .SelectMany(c => new Frontier[] {
             new Frontier(c.node, c.checkpoint, false),
-            new Frontier(c.node, c.checkpoint, true) }).ToList();
+            new Frontier(c.node, c.checkpoint, true) });
     }
 
-    public List<Frontier> ReduceMicroForDiscarded(
+    public IEnumerable<Frontier> ReduceMicroForDiscarded(
         Frontier curFrontier,
         Dictionary<int, List<DiscardedMessage>> discMsgPerStage,
         Dictionary<int, List<Checkpoint>> checkpointsPerVertex)
@@ -272,7 +271,7 @@ namespace FaultToleranceExamples
                      }
                    }
                    return minM;
-                 }).ToList();
+                 });
       List<Checkpoint> minCheckpoints = new List<Checkpoint>();
       foreach (var minC in minCPerVertex)
       {
@@ -306,18 +305,18 @@ namespace FaultToleranceExamples
           })
         .SelectMany(c => new Frontier[] {
             new Frontier(c.node, c.checkpoint, false),
-            new Frontier(c.node, c.checkpoint, true) }).ToList();
+            new Frontier(c.node, c.checkpoint, true) });
     }
 
-    public List<Frontier> ReduceMicroNotif(Frontier curFrontier,
-                                           Dictionary<int, List<Edge>> edgesPerVertex,
-                                           Dictionary<int, List<Notification>> notifsPerVertex,
-                                           Dictionary<int, List<Checkpoint>> checkpointsPerVertex,
-                                           ReplayIncrementalComplexFTWorkflow.ReplayIncrementalComplexFTWorkflow replay)
+    public IEnumerable<Frontier> ReduceMicroNotif(Frontier curFrontier,
+                                                  Dictionary<int, List<Edge>> edgesPerVertex,
+                                                  Dictionary<int, List<Notification>> notifsPerVertex,
+                                                  Dictionary<int, List<Checkpoint>> checkpointsPerVertex,
+                                                  ReplayIncrementalComplexFTWorkflow.ReplayIncrementalComplexFTWorkflow replay)
     {
       List<Edge> vEdges = new List<Edge>();
       bool found = edgesPerVertex.TryGetValue(curFrontier.node.denseId, out vEdges);
-      List<Frontier> intersectedProjectedNotificationFrontiers = new List<Frontier>();
+      IEnumerable<Frontier> intersectedProjectedNotificationFrontiers = new List<Frontier>();
       if (found)
       {
         intersectedProjectedNotificationFrontiers =
@@ -336,7 +335,7 @@ namespace FaultToleranceExamples
                      }
                    }
                    return minF;
-                 }).ToList();
+                 });
       }
       List<Pair<SV,LexStamp>> staleDeliveredNotifications = new List<Pair<SV,LexStamp>>();
       foreach (var intPrjFrontier in intersectedProjectedNotificationFrontiers)
@@ -403,7 +402,7 @@ namespace FaultToleranceExamples
                              })
         .SelectMany(c => new Frontier[] {
             new Frontier(c.node, c.checkpoint, false),
-            new Frontier(c.node, c.checkpoint, true) }).Concat(intersectedProjectedNotificationFrontiers).ToList();
+            new Frontier(c.node, c.checkpoint, true) }).Concat(intersectedProjectedNotificationFrontiers);
     }
 
     private static Pair<Checkpoint, LexStamp> PairCheckpointToBeLowerThanTime(

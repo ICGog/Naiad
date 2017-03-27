@@ -1010,7 +1010,7 @@ namespace FaultToleranceExamples.ReplayIncrementalComplexFTWorkflow
           }
         }
       }
-      Console.Error.WriteLine("NumVisited {0}", numVisited);
+      Console.Error.WriteLine("NumVisited single thread {0}", numVisited);
       return currentFrontiers.Values.Concat(currentNFrontiers.Values).ToList();
     }
 
@@ -1147,8 +1147,6 @@ namespace FaultToleranceExamples.ReplayIncrementalComplexFTWorkflow
         }
       }
       int numVisited = 0;
-      int numThreads = 48;
-      int numPerThread = 20;
       ManualResetEvent[] doneEvents = new ManualResetEvent[numThreads];
       for (int i = 0; i < numThreads; ++i)
         doneEvents[i] = new ManualResetEvent(true);
@@ -1156,11 +1154,12 @@ namespace FaultToleranceExamples.ReplayIncrementalComplexFTWorkflow
       while (toProcess.Count > 0)
       {
         int curNumThreads = 0;
+        int numFrontiersPerThread = toProcess.Count / numThreads + 1;
         while (curNumThreads < numThreads && toProcess.Count > 0)
         {
           int curNumPerThread = 0;
           List<Pair<Frontier, bool>> toUpdate = new List<Pair<Frontier, bool>>();
-          while (toProcess.Count > 0 && curNumPerThread < numPerThread)
+          while (toProcess.Count > 0 && curNumPerThread < numFrontiersPerThread)
           {
             Frontier curFrontier = toProcess.Pop();
             bool discarded = false;
@@ -1192,20 +1191,31 @@ namespace FaultToleranceExamples.ReplayIncrementalComplexFTWorkflow
             }
           }
           doneEvents[curNumThreads] = new ManualResetEvent(false);
+          // MicroUpdateFrontiers updateF =
+          //   new MicroUpdateFrontiers(toUpdate,
+          //                            doneEvents[curNumThreads],
+          //                            this,
+          //                            edgesPerVertex,
+          //                            notifsPerVertex,
+          //                            checkpointsPerVertex,
+          //                            discMsgPerStage,
+          //                            delivDstTimePerEdgeKey);
           UpdateFrontiers updateF =
             new UpdateFrontiers(toUpdate,
                                 doneEvents[curNumThreads],
                                 this,
-                                edgesPerVertex,
-                                notifsPerVertex,
-                                checkpointsPerVertex,
-                                discMsgPerStage,
-                                delivDstTimePerEdgeKey);
+                                checkpoints,
+                                discMsgs,
+                                delivMsgs,
+                                notifications,
+                                graph);
           updateArray[curNumThreads] = updateF;
           ThreadPool.QueueUserWorkItem(updateF.ThreadPoolCallback, curNumThreads);
           curNumThreads++;
         }
+        Console.WriteLine("Before WaitAll {0}", stopwatch.ElapsedMilliseconds);
         WaitHandle.WaitAll(doneEvents);
+        Console.WriteLine("After WaitAll {0}", stopwatch.ElapsedMilliseconds);
         for (int numThread = 0; numThread < curNumThreads; ++numThread)
         {
           var allNewFrontiers = updateArray[numThread].newFrontiers;
@@ -1322,6 +1332,8 @@ namespace FaultToleranceExamples.ReplayIncrementalComplexFTWorkflow
       return currentFrontiers.Values.Concat(currentNFrontiers.Values).ToList();
     }
 
+    private int numThreads;
+
     public void Execute(string[] args)
     {
       this.config = Configuration.FromArgs(ref args);
@@ -1332,6 +1344,7 @@ namespace FaultToleranceExamples.ReplayIncrementalComplexFTWorkflow
       int replayNumEpochs = -1;
       int argIndex = 1;
       bool microBatch = false;
+      numThreads = 1;
       while (argIndex < args.Length)
       {
         switch (args[argIndex].ToLower())
@@ -1351,6 +1364,10 @@ namespace FaultToleranceExamples.ReplayIncrementalComplexFTWorkflow
           case "-microbatch":
             microBatch = true;
             argIndex++;
+            break;
+          case "-numthreads":
+            numThreads = Int32.Parse(args[argIndex + 1]);
+            argIndex += 2;
             break;
           default:
             throw new ApplicationException("Unknown argument " + args[argIndex]);
@@ -1472,6 +1489,7 @@ namespace FaultToleranceExamples.ReplayIncrementalComplexFTWorkflow
 
                 if (microBatch)
                 {
+//                  frontiers = ComputeFrontiersMicroBatchSingleThread(stopwatch,
                   frontiers = ComputeFrontiersMicroBatch(stopwatch,
                                                          edges,
                                                          checkpointState.ToList(),

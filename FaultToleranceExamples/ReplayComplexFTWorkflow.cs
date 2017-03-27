@@ -117,6 +117,7 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
 
     public static Collection<Frontier, T> Reduce<T>(
       this Collection<Frontier, T> frontiers,
+      System.Diagnostics.Stopwatch stopwatch,
       Collection<Checkpoint, T> checkpoints,
       Collection<DeliveredMessage, T> deliveredMessageTimes,
       Collection<Notification, T> deliveredNotificationTimes,
@@ -137,6 +138,8 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
         // keep only the lowest projected frontier from each src stage
         .Min(f => StageFrontierKey(f), f => f.Second.value);
 
+      projectedMessageFrontiers.Print("projectedMessageFrontiers", stopwatch);
+
       Collection<Pair<SV,LexStamp>,T> staleDeliveredMessages = deliveredMessageTimes
         //// make sure messages are unique
         //.Distinct()
@@ -150,6 +153,8 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
           // we only care about the destination node and stale message time
           .Select(m => m.First.PairWith(m.Second.First));
 
+      staleDeliveredMessages.Print("staleDeliveredMessages", stopwatch);
+
       Collection<Frontier, T> intersectedProjectedNotificationFrontiers = frontiers
         // only look at the notification frontiers
         .Where(f => f.isNotification)
@@ -162,6 +167,8 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
         // and find the intersection (minimum) of the projections at the destination
         .Min(f => f.node.denseId, f => f.frontier.value);
 
+      intersectedProjectedNotificationFrontiers.Print("intersectedProjectNotificationFrontiers", stopwatch);
+
       Collection<Pair<SV,LexStamp>,T> staleDeliveredNotifications = deliveredNotificationTimes
         // match up delivered notifications with the intersected projected notification frontier at the node,
         // keeping node, time and intersected projected frontier
@@ -173,10 +180,14 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
         // we only care about the node and stale notification time
         .Select(n => n.First.PairWith(n.Second.First));
 
+      staleDeliveredNotifications.Print("staleDeliveredNotifications", stopwatch);
+
       Collection<Pair<SV,LexStamp>,T> earliestStaleEvents = staleDeliveredMessages
         .Concat(staleDeliveredNotifications)
         // keep only the earliest stale event at each node
         .Min(n => n.First.denseId, n => n.Second.value);
+
+      staleDeliveredMessages.Print("slateDeliveredMessages", stopwatch);
 
       var reducedFrontiers = checkpoints
         // for each node that executed a stale, match it up with all the available checkpoints,
@@ -192,6 +203,8 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
         .SelectMany(c => new Frontier[] {
             new Frontier(c.First.node, c.First.checkpoint, false),
             new Frontier(c.First.node, c.First.checkpoint, true) });
+
+      reducedFrontiers.Print("reducedFrontiers", stopwatch);
 
       // return any reduction in either frontier
       return reducedFrontiers.Concat(intersectedProjectedNotificationFrontiers);
@@ -503,48 +516,53 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
         // frontiers = reduced.Concat(reducedDiscards).Concat(frontiers)
         //   .Min(ff => (ff.node.denseId + (ff.isNotification ? 0x10000 : 0)), ff => ff.frontier.value);
         var frontiers = initial
-          .GeneralFixedPoint((c, f) =>
-            {
-              var reducedDiscards = f
-                .ReduceForDiscarded(
-                  checkpointStream.EnterLoop(c),
-                  discardedMessages.EnterLoop(c), this);
-//              reducedDiscards.Print("reducedDiscards", beginWatch);
-              var reduced = f
-                .Reduce(
-                  checkpointStream.EnterLoop(c), deliveredMessages.EnterLoop(c),
-                  deliveredNotifications.EnterLoop(c), graph.EnterLoop(c),
-                  this);
-//              reduced.Print("reduced", beginWatch);
-              return reduced.Concat(reducedDiscards).Concat(f)
-                .Min(ff => (ff.node.denseId + (ff.isNotification ? 0x10000 : 0)), ff => ff.frontier.value);
-            },
-//          f => (int)(f.frontier.value),
-//                             f => (int)(f.frontier.value >> 42),
-                             f => f.frontier.a / 2,
-          f => f.node.denseId,
-          Int32.MaxValue,
-          CheckpointType.Stateless)
-          .Consolidate();
-
-//           .FixedPoint((c, f) =>
+//           .GeneralFixedPoint((c, f) =>
 //             {
 //               var reducedDiscards = f
 //                 .ReduceForDiscarded(
 //                   checkpointStream.EnterLoop(c),
 //                   discardedMessages.EnterLoop(c), this);
-// //              reducedDiscards.Print("reducedDiscards", beginWatch);
+// //               reducedDiscards.Print("reducedDiscards", beginWatch);
 //               var reduced = f
 //                 .Reduce(
+//                   beginWatch,
 //                   checkpointStream.EnterLoop(c), deliveredMessages.EnterLoop(c),
 //                   deliveredNotifications.EnterLoop(c), graph.EnterLoop(c),
 //                   this);
 // //              reduced.Print("reduced", beginWatch);
 //               return reduced.Concat(reducedDiscards).Concat(f)
 //                 .Min(ff => (ff.node.denseId + (ff.isNotification ? 0x10000 : 0)), ff => ff.frontier.value);
-//             })
+//             },
+// //          f => (int)(f.frontier.value),
+//                              f => f.frontier.a / 4,
+//           f => f.node.denseId,
+//           Int32.MaxValue,
+//           CheckpointType.Stateless)
 //           .Consolidate();
-//        frontiers.Subscribe(l => {  } );
+
+          .FixedPoint((c, f) =>
+            {
+              var reducedDiscards = f
+                .ReduceForDiscarded(
+                  checkpointStream.EnterLoop(c),
+                  discardedMessages.EnterLoop(c), this);
+              reducedDiscards.Print("reducedDiscards", beginWatch);
+              var newF = reducedDiscards.Concat(f)
+                .Min(ff => (ff.node.denseId + (ff.isNotification ? 0x10000 : 0)), ff => ff.frontier.value);
+
+              var reduced = newF
+                .Reduce(beginWatch, checkpointStream.EnterLoop(c),
+                        deliveredMessages.EnterLoop(c),
+                        deliveredNotifications.EnterLoop(c), graph.EnterLoop(c),
+                        this);
+
+              reduced.Print("reduced", beginWatch);
+              var result = reduced.Concat(newF)
+                .Min(ff => (ff.node.denseId + (ff.isNotification ? 0x10000 : 0)), ff => ff.frontier.value);
+              return result;
+            })
+          .Consolidate();
+        frontiers.Subscribe(l => {  } );
         HashSet<Frontier> frontierState = new HashSet<Frontier>();
         frontiers.Subscribe(l => {
             foreach (Weighted<Frontier> frontier in l)
@@ -641,7 +659,8 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
                 {
                   ApplyDeltas(checkpointChanges, notificationChanges, deliveredMessageChanges,
                               discardedMessageChanges);
-                  Console.WriteLine("State {0} {1} {2} {3}",
+                  Console.WriteLine("{0} State {1} {2} {3} {4}",
+                                    beginWatch.ElapsedMilliseconds,
                                     checkpointState.Count,
                                     notificationState.Count,
                                     delivMsgState.Count,

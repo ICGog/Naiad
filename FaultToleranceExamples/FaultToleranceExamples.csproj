@@ -110,6 +110,7 @@
     <Compile Include="ReplayScratchComplexFTWorkflow.cs" />
     <Compile Include="ReplayIncrementalComplexFTWorkflow.cs" />
     <Compile Include="SimpleFTWorkflow.cs" />
+    <Compile Include="UpdateFrontiers.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
