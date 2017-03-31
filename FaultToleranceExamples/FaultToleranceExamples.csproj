@@ -103,6 +103,7 @@
   <ItemGroup>
     <Compile Include="AzureStreamSequence.cs" />
     <Compile Include="HdfsStreamSequence.cs" />
+    <Compile Include="ConnectedComponents.cs" />
     <Compile Include="ComplexFTWorkflow.cs" />
     <Compile Include="MicroUpdateFrontiers.cs" />
     <Compile Include="Program.cs" />

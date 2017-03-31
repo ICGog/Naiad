@@ -1151,6 +1151,7 @@ namespace FaultToleranceExamples.ReplayIncrementalComplexFTWorkflow
       for (int i = 0; i < numThreads; ++i)
         doneEvents[i] = new ManualResetEvent(true);
       UpdateFrontiers[] updateArray = new UpdateFrontiers[numThreads];
+//      MicroUpdateFrontiers[] updateArray = new MicroUpdateFrontiers[numThreads];
       while (toProcess.Count > 0)
       {
         int curNumThreads = 0;

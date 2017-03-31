@@ -549,11 +549,16 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
             }
             else
             {
-              this.checkpointStreamInput.OnNext(checkpoints);
-              this.deliveredMessagesInput.OnNext();
-              this.deliveredNotificationsInput.OnNext();
-              this.discardedMessagesInput.OnNext();
-              this.graphInput.OnNext(edges);
+              // this.checkpointStreamInput.OnNext(checkpoints);
+              // this.deliveredMessagesInput.OnNext();
+              // this.deliveredNotificationsInput.OnNext();
+              // this.discardedMessagesInput.OnNext();
+              // this.graphInput.OnNext(edges);
+              new Thread(() => ComputeFrontiersIncrementally(checkpointState.ToList(),
+                                                             notifState.ToList(),
+                                                             delivMsgState.ToList(),
+                                                             discMsgState.ToList(),
+                                                             edges)).Start();
             }
             ++this.epoch;
         }
@@ -1185,11 +1190,17 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
                 }
                 else
                 {
-                  this.checkpointStreamInput.OnNext(checkpointState.ToList());
-                  this.deliveredMessagesInput.OnNext(delivMsgState.ToList());
-                  this.deliveredNotificationsInput.OnNext(notifState.ToList());
-                  this.discardedMessagesInput.OnNext(discMsgState.ToList());
-                  this.graphInput.OnNext(edges);
+                  // this.checkpointStreamInput.OnNext(checkpointState.ToList());
+                  // this.deliveredMessagesInput.OnNext(delivMsgState.ToList());
+                  // this.deliveredNotificationsInput.OnNext(notifState.ToList());
+                  // this.discardedMessagesInput.OnNext(discMsgState.ToList());
+                  // this.graphInput.OnNext(edges);
+                  new Thread(() => ComputeFrontiersIncrementally(checkpointState.ToList(),
+                                                                 notifState.ToList(),
+                                                                 delivMsgState.ToList(),
+                                                                 discMsgState.ToList(),
+                                                                 edges)).Start();
+
                 }
                 this.WriteLog("InjectUpdates OnNext epoch " + this.epoch);
                 ++this.epoch;
@@ -1238,14 +1249,194 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
             }
             else
             {
-              this.checkpointStreamInput.OnNext(checkpointState.ToList());
-              this.deliveredMessagesInput.OnNext(delivMsgState.ToList());
-              this.deliveredNotificationsInput.OnNext(notifState.ToList());
-              this.discardedMessagesInput.OnNext(discMsgState.ToList());
-              this.graphInput.OnNext(edges);
+              // this.checkpointStreamInput.OnNext(checkpointState.ToList());
+              // this.deliveredMessagesInput.OnNext(delivMsgState.ToList());
+              // this.deliveredNotificationsInput.OnNext(notifState.ToList());
+              // this.discardedMessagesInput.OnNext(discMsgState.ToList());
+              // this.graphInput.OnNext(edges);
+              new Thread(() => ComputeFrontiersIncrementally(checkpointState.ToList(),
+                                                             notifState.ToList(),
+                                                             delivMsgState.ToList(),
+                                                             discMsgState.ToList(),
+                                                             edges)).Start();
             }
             this.WriteLog("InjectRollbackUpdates OnNext epoch " + this.epoch);
             ++this.epoch;
+        }
+
+        private void ComputeFrontiersIncrementally(
+            List<Checkpoint> checkpoints,
+            List<Notification> notifications,
+            List<DeliveredMessage> delivMsgs,
+            List<DiscardedMessage> discMsgs,
+            List<Edge> graph)
+        {
+          var frontiers =
+            //      checkpoints.Max(c => c.node.denseId, c => c.checkpoint.value);
+            checkpoints.GroupBy(c => c.node.denseId,
+                                x => x,
+                                (d, cs) => {
+                                  Checkpoint maxRes = cs.First();
+                                  foreach (var cc in cs)
+                                  {
+                                    if (cc.checkpoint.value > maxRes.checkpoint.value)
+                                    {
+                                      maxRes = cc;
+                                    }
+                                  }
+                                  return maxRes;
+                                })
+            .SelectMany(c => new Frontier[] {
+                new Frontier(c.node, c.checkpoint, false),
+                new Frontier(c.node, c.checkpoint, true) });
+
+          Dictionary<SV, Frontier> currentFrontiers =
+            new Dictionary<SV, Frontier>();
+          Dictionary<SV, Frontier> currentNFrontiers =
+            new Dictionary<SV, Frontier>();
+          Dictionary<int, Frontier> minStageFrontier =
+            new Dictionary<int, Frontier>();
+          Dictionary<int, bool> doneMinStageFrontier =
+            new Dictionary<int, bool>();
+          Dictionary<int, Frontier> minStageNFrontier =
+            new Dictionary<int, Frontier>();
+          Stack<Frontier> toProcess = new Stack<Frontier>();
+
+
+
+          foreach (Frontier frontier in frontiers)
+          {
+            toProcess.Push(frontier);
+            if (frontier.isNotification)
+            {
+              currentNFrontiers.Add(frontier.node, frontier);
+              Frontier minFrontier;
+              bool found = minStageNFrontier.TryGetValue(frontier.node.DenseStageId,
+                                                         out minFrontier);
+              if (!found)
+              {
+                minStageNFrontier.Add(frontier.node.DenseStageId, frontier);
+              }
+              else
+              {
+                if (minFrontier.frontier.value > frontier.frontier.value)
+                {
+                  minStageNFrontier[frontier.node.DenseStageId] = frontier;
+                }
+              }
+            }
+            else
+            {
+              currentFrontiers.Add(frontier.node, frontier);
+              Frontier minFrontier;
+              bool found = minStageFrontier.TryGetValue(frontier.node.DenseStageId, out minFrontier);
+              if (!found)
+              {
+                minStageFrontier.Add(frontier.node.DenseStageId, frontier);
+                doneMinStageFrontier.Add(frontier.node.DenseStageId, false);
+              }
+              else
+              {
+                if (minFrontier.frontier.value > frontier.frontier.value)
+                {
+                  minStageFrontier[frontier.node.DenseStageId] = frontier;
+                }
+              }
+            }
+          }
+          int numThreads = 4;
+          ManualResetEvent[] doneEvents = new ManualResetEvent[numThreads];
+          for (int i = 0; i < numThreads; ++i)
+            doneEvents[i] = new ManualResetEvent(true);
+          UpdateFrontiers[] updateArray = new UpdateFrontiers[numThreads];
+          while (toProcess.Count > 0)
+          {
+            int curNumThreads = 0;
+            int numFrontiersPerThread = toProcess.Count / numThreads + 1;
+            while (curNumThreads < numThreads && toProcess.Count > 0)
+            {
+              int curNumPerThread = 0;
+              List<Pair<Frontier, bool>> toUpdate = new List<Pair<Frontier, bool>>();
+              while (toProcess.Count > 0 &&
+                     curNumPerThread < numFrontiersPerThread)
+              {
+                Frontier curFrontier = toProcess.Pop();
+                bool discarded = false;
+                if (curFrontier.isNotification)
+                {
+                  if (currentNFrontiers[curFrontier.node].frontier.Contains(curFrontier.frontier))
+                  {
+                    toUpdate.Add(curFrontier.PairWith(false));
+                    curNumPerThread++;
+                  }
+                }
+                else
+                {
+                  if (currentFrontiers[curFrontier.node].frontier.Contains(curFrontier.frontier))
+                  {
+                    if (minStageFrontier[curFrontier.node.DenseStageId].frontier.value >
+                        curFrontier.frontier.value ||
+                        (minStageFrontier[curFrontier.node.DenseStageId].frontier.value ==
+                         curFrontier.frontier.value &&
+                         doneMinStageFrontier[curFrontier.node.DenseStageId] == false))
+                    {
+                      minStageFrontier[curFrontier.node.DenseStageId] = curFrontier;
+                      doneMinStageFrontier[curFrontier.node.DenseStageId] = true;
+                      discarded = true;
+                    }
+                    toUpdate.Add(curFrontier.PairWith(discarded));
+                    curNumPerThread++;
+                  }
+                }
+              }
+              doneEvents[curNumThreads] = new ManualResetEvent(false);
+              UpdateFrontiers updateF =
+                new UpdateFrontiers(toUpdate,
+                                    doneEvents[curNumThreads],
+                                    this,
+                                    checkpoints,
+                                    discMsgs,
+                                    delivMsgs,
+                                    notifications,
+                                    graph);
+              updateArray[curNumThreads] = updateF;
+              ThreadPool.QueueUserWorkItem(updateF.ThreadPoolCallback,
+                                           curNumThreads);
+              curNumThreads++;
+            }
+
+            WaitHandle.WaitAll(doneEvents);
+
+            for (int numThread = 0; numThread < curNumThreads; ++numThread)
+            {
+              var allNewFrontiers = updateArray[numThread].newFrontiers;
+              foreach (Frontier frontier in allNewFrontiers)
+              {
+                if (frontier.isNotification)
+                {
+                  if (!frontier.frontier.Contains(currentNFrontiers[frontier.node].frontier))
+                  {
+                    currentNFrontiers[frontier.node] = frontier;
+                    toProcess.Push(frontier);
+                  }
+                }
+                else
+                {
+                  if (!frontier.frontier.Contains(currentFrontiers[frontier.node].frontier))
+                  {
+                    currentFrontiers[frontier.node] = frontier;
+                    toProcess.Push(frontier);
+                    if (minStageFrontier[frontier.node.DenseStageId].frontier.value >
+                        frontier.frontier.value) {
+                      minStageFrontier[frontier.node.DenseStageId] = frontier;
+                      doneMinStageFrontier[frontier.node.DenseStageId] = false;
+                    }
+                  }
+                }
+              }
+            }
+          }
+          ReactToFrontiers(currentFrontiers.Values.Concat(currentNFrontiers.Values).ToList());
         }
 
         private void LogOnNext(List<Checkpoint> checkpointChanges,
@@ -1740,7 +1931,7 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
                 //     .Select(fff => fff.Second);
                 //   }, 10, "ComputeFrontiers");
 
-              for (int fi = 0; fi < 20; fi++)
+              for (int fi = 0; fi < 1; fi++)
               {
                 var reducedDiscards = frontiers
                   .ReduceForDiscarded(checkpointInputStream, discMessageInputStream, this);

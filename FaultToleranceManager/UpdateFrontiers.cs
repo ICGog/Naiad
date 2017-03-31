@@ -40,13 +40,13 @@ using Microsoft.Research.Naiad.Runtime.FaultTolerance;
 using Microsoft.Research.Naiad.FaultToleranceManager;
 using Microsoft.Research.Naiad.Serialization;
 
-namespace FaultToleranceExamples
+namespace Microsoft.Research.Naiad.FaultToleranceManager
 {
   public class UpdateFrontiers
   {
     private List<Pair<Frontier, bool>> toUpdate;
     private ManualResetEvent doneEvent;
-    private ReplayIncrementalComplexFTWorkflow.ReplayIncrementalComplexFTWorkflow replay;
+    private FTManager manager;
     private List<Checkpoint> checkpoints;
     private List<DiscardedMessage> discMsgs;
     private List<DeliveredMessage> delivMsgs;
@@ -56,7 +56,7 @@ namespace FaultToleranceExamples
 
     public UpdateFrontiers(List<Pair<Frontier, bool>> curToUpdate,
                            ManualResetEvent doneEvent,
-                           ReplayIncrementalComplexFTWorkflow.ReplayIncrementalComplexFTWorkflow replay,
+                           FTManager manager,
                            List<Checkpoint> checkpoints,
                            List<DiscardedMessage> discMsgs,
                            List<DeliveredMessage> delivMsgs,
@@ -64,7 +64,7 @@ namespace FaultToleranceExamples
                            List<Edge> graph) {
       toUpdate = curToUpdate;
       this.doneEvent = doneEvent;
-      this.replay = replay;
+      this.manager = manager;
       this.checkpoints = checkpoints;
       this.discMsgs = discMsgs;
       this.delivMsgs = delivMsgs;
@@ -78,9 +78,7 @@ namespace FaultToleranceExamples
       System.Diagnostics.Stopwatch stopwatch = System.Diagnostics.Stopwatch.StartNew();
       var frontiers = toUpdate.Select(x => x.First).ToList();
       var reducedDiscards = ReduceForDiscardedScratch(frontiers).ToList();
-      Console.WriteLine("ReduceForDiscarded took {0}", stopwatch.ElapsedMilliseconds);
       var reduced = ReduceScratch(frontiers, stopwatch);
-      Console.WriteLine("Reduce took {0}", stopwatch.ElapsedMilliseconds);
       var allFrontiers = reduced.Concat(reducedDiscards).Concat(frontiers);
       newFrontiers = allFrontiers.GroupBy(ff => (ff.node.denseId + (ff.isNotification ? 0x10000 : 0)),
                                          x => x,
@@ -135,7 +133,7 @@ namespace FaultToleranceExamples
                    return minM;
                  })
         .Join(checkpoints, m => m.First.denseId, c => c.node.denseId,
-              (m, c) => PairCheckpointToBeLowerThanTime(c, m.Second, this.replay))
+              (m, c) => PairCheckpointToBeLowerThanTime(c, m.Second, this.manager))
         .Where(c => !c.First.checkpoint.Contains(c.Second))
         .Select(c => c.First)
         // .Max(c => c.node.denseId, c => c.checkpoint.value)
@@ -167,8 +165,8 @@ namespace FaultToleranceExamples
           (f, e) => e.src.DenseStageId
             .PairWith(e.dst)
             .PairWith(f.frontier.Project(
-               replay.StageTypes[e.src.DenseStageId],
-               replay.StageLenghts[e.src.DenseStageId]))).ToList()
+               manager.DenseStages[e.src.DenseStageId],
+               manager.DenseStages[e.src.DenseStageId].DefaultVersion.Timestamp.Length))).ToList()
       //   .Min(f => StageFrontierKey(f), f => f.Second.value);
         .GroupBy(f => StageFrontierKey(f),
                  x => x,
@@ -196,8 +194,8 @@ namespace FaultToleranceExamples
         .Join(
           graph, f => f.node.denseId, e => e.src.denseId,
           (f, e) => new Frontier(e.dst, f.frontier.Project(
-            replay.StageTypes[e.src.DenseStageId],
-            replay.StageLenghts[e.src.DenseStageId]), true))
+            manager.DenseStages[e.src.DenseStageId],
+            manager.DenseStages[e.src.DenseStageId].DefaultVersion.Timestamp.Length), true))
       //   .Min(f => f.node.denseId, f => f.frontier.value);
         .GroupBy(f => f.node.denseId,
                  x => x,
@@ -240,7 +238,7 @@ namespace FaultToleranceExamples
       var reducedFrontiers = checkpoints
         .Join(
           earliestStaleEvents, c => c.node.denseId, e => e.First.denseId,
-          (c, e) => PairCheckpointToBeLowerThanTime(c, e.Second, replay))
+          (c, e) => PairCheckpointToBeLowerThanTime(c, e.Second, manager))
         .Where(c => !c.First.checkpoint.Contains(c.Second))
       //   .Max(c => c.First.node.denseId, c => c.First.checkpoint.value)
         .GroupBy(c => c.First.node.denseId,
@@ -266,13 +264,13 @@ namespace FaultToleranceExamples
     private static Pair<Checkpoint, LexStamp> PairCheckpointToBeLowerThanTime(
       Checkpoint checkpoint,
       LexStamp time,
-      ReplayIncrementalComplexFTWorkflow.ReplayIncrementalComplexFTWorkflow replayWorkflow) {
+      FTManager manager) {
 
       if (checkpoint.downwardClosed && checkpoint.checkpoint.Contains(time))
       {
         return new Checkpoint(
           checkpoint.node,
-          LexStamp.SetBelow(time, replayWorkflow.StageLenghts[checkpoint.node.DenseStageId]),
+          LexStamp.SetBelow(time, manager.DenseStages[checkpoint.node.DenseStageId].DefaultVersion.Timestamp.Length),
           true).PairWith(time);
       }
       else
