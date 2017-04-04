@@ -1014,6 +1014,9 @@ namespace FaultToleranceExamples.ReplayIncrementalComplexFTWorkflow
       return currentFrontiers.Values.Concat(currentNFrontiers.Values).ToList();
     }
 
+    Dictionary<SV, Frontier> currentFrontiers = new Dictionary<SV, Frontier>();
+    Dictionary<SV, Frontier> currentNFrontiers = new Dictionary<SV, Frontier>();
+
     public List<Frontier> ComputeFrontiersMicroBatch(
         System.Diagnostics.Stopwatch stopwatch,
         List<Edge> graph,
@@ -1024,19 +1027,29 @@ namespace FaultToleranceExamples.ReplayIncrementalComplexFTWorkflow
     {
       var frontiers = MaxFrontierPerVertex(checkpoints);
       int numIterations = 0;
-      Dictionary<SV, Frontier> currentFrontiers = new Dictionary<SV, Frontier>();
-      Dictionary<SV, Frontier> currentNFrontiers = new Dictionary<SV, Frontier>();
       Dictionary<int, Frontier> minStageFrontier = new Dictionary<int, Frontier>();
       Dictionary<int, bool> doneMinStageFrontier = new Dictionary<int, bool>();
       Dictionary<int, Frontier> minStageNFrontier = new Dictionary<int, Frontier>();
       Stack<Frontier> toProcess = new Stack<Frontier>();
       foreach (Frontier frontier in frontiers)
       {
-        toProcess.Push(frontier);
         if (frontier.isNotification)
         {
-          currentNFrontiers.Add(frontier.node, frontier);
           Frontier minFrontier;
+          if (currentNFrontiers.TryGetValue(frontier.node, out minFrontier))
+          {
+            if (frontier.frontier.value > minFrontier.frontier.value)
+            {
+              toProcess.Push(frontier);
+              currentNFrontiers[frontier.node] = frontier;
+            }
+          }
+          else
+          {
+            toProcess.Push(frontier);
+            currentNFrontiers.Add(frontier.node, frontier);
+          }
+
           bool found = minStageNFrontier.TryGetValue(frontier.node.DenseStageId, out minFrontier);
           if (!found)
           {
@@ -1052,8 +1065,21 @@ namespace FaultToleranceExamples.ReplayIncrementalComplexFTWorkflow
         }
         else
         {
-          currentFrontiers.Add(frontier.node, frontier);
           Frontier minFrontier;
+          if (currentFrontiers.TryGetValue(frontier.node, out minFrontier))
+          {
+            if (frontier.frontier.value > minFrontier.frontier.value)
+            {
+              toProcess.Push(frontier);
+              currentFrontiers[frontier.node] = frontier;
+            }
+          }
+          else
+          {
+            toProcess.Push(frontier);
+            currentFrontiers.Add(frontier.node, frontier);
+          }
+
           bool found = minStageFrontier.TryGetValue(frontier.node.DenseStageId, out minFrontier);
           if (!found)
           {
@@ -1339,8 +1365,9 @@ namespace FaultToleranceExamples.ReplayIncrementalComplexFTWorkflow
     {
       this.config = Configuration.FromArgs(ref args);
       this.config.MaxLatticeInternStaleTimes = 10;
-      string onNextGraphFile = "/tmp/falkirk/onNextGraph.log";
-      string onNextFile = "/tmp/falkirk/onNext.log";
+      string logPrefix = "/mnt/ramdisk/falkirk";
+      string onNextGraphFile = logPrefix + "/onNextGraph.log";
+      string onNextFile = logPrefix + "/onNext.log";
       int curEpoch = 0;
       int replayNumEpochs = -1;
       int argIndex = 1;
@@ -1368,6 +1395,10 @@ namespace FaultToleranceExamples.ReplayIncrementalComplexFTWorkflow
             break;
           case "-numthreads":
             numThreads = Int32.Parse(args[argIndex + 1]);
+            argIndex += 2;
+            break;
+          case "-logprefix":
+            logPrefix = args[argIndex + 1];
             argIndex += 2;
             break;
           default:
@@ -1444,7 +1475,6 @@ namespace FaultToleranceExamples.ReplayIncrementalComplexFTWorkflow
                                initDeliveredMessageChanges,
                                initDiscardedMessageChanges);
             var initialStopwatch = System.Diagnostics.Stopwatch.StartNew();
-
             if (microBatch)
             {
               ComputeFrontiersMicroBatch(initialStopwatch,

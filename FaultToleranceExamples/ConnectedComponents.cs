@@ -33,6 +33,7 @@ using Microsoft.Research.Naiad.Runtime.Progress;
 using Microsoft.Research.Naiad.Runtime.FaultTolerance;
 using Microsoft.Research.Naiad.FaultToleranceManager;
 using Microsoft.Research.Naiad.Frameworks.DifferentialDataflow;
+using Microsoft.Research.Naiad.Serialization;
 
 namespace FaultToleranceExamples.ConnectedComponents
 {
@@ -76,11 +77,6 @@ namespace FaultToleranceExamples.ConnectedComponents
     /// </summary>
     public class ConnectedComponents : Example
     {
-        // int nodeCount = 5000000;
-        // int edgeCount =  3750000;
-        int nodeCount = 50000;
-        int edgeCount =  37500;
-
         private class FileLogStream : LogStream
         {
             private StreamWriter log;
@@ -129,40 +125,93 @@ namespace FaultToleranceExamples.ConnectedComponents
             int managerWorkerCount = 4;
             bool nonIncrementalFTManager = false;
             int changesPerEpoch = 30;
-            int numEpochsToRun = 10;
+            int numEpochsToRun = 50;
+            // int nodeCount = 5000000;
+            // int edgeCount =  3750000;
+            int nodeCount = 50000;
+            int edgeCount =  37500;
+            bool noFaultTolerance = false;
+            int i = 1;
+            while (i < args.Length)
+            {
+                switch (args[i].ToLower())
+                {
+                    case "-minimallog":
+                        minimalLogging = true;
+                        ++i;
+                        break;
+                    case "-nonincrementalftmanager":
+                        nonIncrementalFTManager = true;
+                        i++;
+                        break;
+                    case "-mwc":
+                        managerWorkerCount = Int32.Parse(args[i + 1]);
+                        i += 2;
+                        break;
+                    case "-logprefix":
+                        logPrefix = args[i + 1];
+                        i += 2;
+                        break;
+                    case "-changesperepoch":
+                        changesPerEpoch = Int32.Parse(args[i + 1]);
+                        i += 2;
+                        break;
+                    case "-numepochstorun":
+                        numEpochsToRun = Int32.Parse(args[i + 1]);
+                        i += 2;
+                        break;
+                    case "-nodecount":
+                        nodeCount = Int32.Parse(args[i + 1]);
+                        i += 2;
+                        break;
+                    case "-edgecount":
+                        edgeCount = Int32.Parse(args[i + 1]);
+                        i += 2;
+                        break;
+                    case "-nofaulttolerance":
+                        noFaultTolerance = true;
+                        i++;
+                        break;
+                    default:
+                        throw new ApplicationException("Unknown argument " + args[i]);
+                }
+            }
 
             System.IO.Directory.CreateDirectory(logPrefix);
             this.config.LogStreamFactory = (s => new FileLogStream(logPrefix, s));
             this.config.DefaultCheckpointInterval = 1000;
-            System.IO.Directory.CreateDirectory(Path.Combine(logPrefix, "checkpoint"));
-            this.config.CheckpointingFactory = s => new FileStreamSequence(Path.Combine(logPrefix, "checkpoint"), s);
+            if (!noFaultTolerance)
+            {
+              System.IO.Directory.CreateDirectory(Path.Combine(logPrefix, "checkpoint"));
+              this.config.CheckpointingFactory = s => new FileStreamSequence(Path.Combine(logPrefix, "checkpoint"), s);
+            }
+            SerializationFormat serFormat =
+              SerializationFactory.GetCodeGeneratorForVersion(this.config.SerializerVersion.First,
+                                                              this.config.SerializerVersion.Second);
+            FileStream onNextStream = File.Create(logPrefix + "/onNext.log");
+            FileStream onNextGraphStream = File.Create(logPrefix + "/onNextGraph.log");
+            NaiadWriter onNextWriter = new NaiadWriter(onNextStream, serFormat);
+            NaiadWriter onNextGraphWriter = new NaiadWriter(onNextGraphStream, serFormat);
 
             FTManager manager = new FTManager(this.config.LogStreamFactory,
-                                              null,
-                                              null,
+                                              //onNextWriter,
+                                              //onNextGraphWriter,
+                                              null, null,
                                               !nonIncrementalFTManager);
             using (var computation = NewComputation.FromConfig(this.config))
             {
-                // establish numbers of nodes and edges from input or from defaults.
-                if (args.Length == 4)
-                {
-                    nodeCount = Convert.ToInt32(args[1]);
-                    edgeCount = Convert.ToInt32(args[2]);
-                    changesPerEpoch = Convert.ToInt32(args[3]);
-                }
-
                 // generate a random graph
                 var random = new Random(0);
                 var graph = new IntPair[edgeCount];
-                for (int i = 0; i < edgeCount; i++)
-                    graph[i] = new IntPair(random.Next(nodeCount), random.Next(nodeCount));
+                for (int index = 0; index < edgeCount; index++)
+                    graph[index] = new IntPair(random.Next(nodeCount), random.Next(nodeCount));
 
                 var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
                 // set up the CC computation
                 var edges = computation.NewInputCollection<IntPair>();
 
-                edges.SetCheckpointType(CheckpointType.Stateless).SetCheckpointPolicy(s => new CheckpointEagerly());
+//                edges.SetCheckpointType(CheckpointType.Stateless).SetCheckpointPolicy(s => new CheckpointEagerly());
 //                edges.SetCheckpointType(CheckpointType.Stateless).SetCheckpointPolicy(s => new CheckpointByTime(2000));
 
                 //Func<IntPair, int> priorityFunction = node => 0;
@@ -172,7 +221,7 @@ namespace FaultToleranceExamples.ConnectedComponents
                 var cc = edges.ConnectedComponents(priorityFunction)
                                   .Count(n => n.t, (l, c) => c)  // counts results with each label
                   .Consolidate();
-                cc.SetCheckpointType(CheckpointType.Stateless).SetCheckpointPolicy(s => new CheckpointEagerly());
+//                cc.SetCheckpointType(CheckpointType.Stateless).SetCheckpointPolicy(s => new CheckpointEagerly());
 //                cc.SetCheckpointType(CheckpointType.Stateless).SetCheckpointPolicy(s => new CheckpointByTime(2000));
                 var output = cc.Subscribe(l =>
                     {
@@ -195,7 +244,7 @@ namespace FaultToleranceExamples.ConnectedComponents
                 }
 
                 computation.Activate();
-                  Console.WriteLine("Initialized {0}", stopwatch.ElapsedMilliseconds);
+                Console.WriteLine("Initialized {0}", stopwatch.ElapsedMilliseconds);
                 edges.OnNext(computation.Configuration.ProcessID == 0 ? graph : Enumerable.Empty<IntPair>());
 
                 if (computation.Configuration.ProcessID == 0)
@@ -204,8 +253,8 @@ namespace FaultToleranceExamples.ConnectedComponents
                     Console.WriteLine("Time post first sync {0}", stopwatch.ElapsedMilliseconds);
                     stopwatch.Restart();
                     int j = 0;
-                    int i = 0;
-                    for (; i < numEpochsToRun; i++)
+                    int curEpoch = 0;
+                    for (; curEpoch < numEpochsToRun; curEpoch++)
                     {
                         List<Weighted<IntPair>> changes = new List<Weighted<IntPair>>();
                         for (int k = 0; k < changesPerEpoch; ++k, ++j)
@@ -216,7 +265,7 @@ namespace FaultToleranceExamples.ConnectedComponents
                         }
                         edges.OnNext(changes);
                     }
-                    output.Sync(i);
+                    output.Sync(curEpoch);
                     Console.WriteLine("Total time {0}", stopwatch.ElapsedMilliseconds);
                 }
                 edges.OnCompleted();
