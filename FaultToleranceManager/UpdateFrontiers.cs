@@ -93,7 +93,7 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
                                            }
                                            return minF;
                                          }).ToList();
-      Console.WriteLine("Thread took {0}", stopwatch.ElapsedMilliseconds);
+//      Console.WriteLine("{0} Thread took {1}", DateTime.UtcNow.ToString("HH:mm:ss.fff"), stopwatch.ElapsedMilliseconds);
       doneEvent.Set();
     }
 

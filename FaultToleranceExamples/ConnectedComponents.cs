@@ -265,7 +265,7 @@ namespace FaultToleranceExamples.ConnectedComponents
                         }
                         edges.OnNext(changes);
                     }
-                    output.Sync(curEpoch);
+                    output.Sync(curEpoch - 1);
                     Console.WriteLine("Total time {0}", stopwatch.ElapsedMilliseconds);
                 }
                 edges.OnCompleted();
