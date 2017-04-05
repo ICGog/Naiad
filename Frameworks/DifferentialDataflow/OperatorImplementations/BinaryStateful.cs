@@ -471,42 +471,42 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
             }
         }
 
-        private bool HasStateInCheckpoint(BinaryKeyIndices indices, ICheckpoint<T> checkpoint)
-        {
-            // we don't care about unprocessed times since they will be replayed when the checkpoint is restored
+        // private bool HasStateInCheckpoint(BinaryKeyIndices indices, ICheckpoint<T> checkpoint)
+        // {
+        //     // we don't care about unprocessed times since they will be replayed when the checkpoint is restored
 
-            NaiadList<int> timeList = new NaiadList<int>(16);
-            this.inputTrace1.EnumerateTimes(indices.processed1, timeList);
-            for (int i = 0; i < timeList.Count; ++i)
-            {
-                if (checkpoint.ContainsTime(this.internTable.times[timeList.Array[i]]))
-                {
-                    return true;
-                }
-            }
+        //     NaiadList<int> timeList = new NaiadList<int>(16);
+        //     this.inputTrace1.EnumerateTimes(indices.processed1, timeList);
+        //     for (int i = 0; i < timeList.Count; ++i)
+        //     {
+        //         if (checkpoint.ContainsTime(this.internTable.times[timeList.Array[i]]))
+        //         {
+        //             return true;
+        //         }
+        //     }
 
-            timeList.Clear();
-            this.inputTrace2.EnumerateTimes(indices.processed2, timeList);
-            for (int i = 0; i < timeList.Count; ++i)
-            {
-                if (checkpoint.ContainsTime(this.internTable.times[timeList.Array[i]]))
-                {
-                    return true;
-                }
-            }
+        //     timeList.Clear();
+        //     this.inputTrace2.EnumerateTimes(indices.processed2, timeList);
+        //     for (int i = 0; i < timeList.Count; ++i)
+        //     {
+        //         if (checkpoint.ContainsTime(this.internTable.times[timeList.Array[i]]))
+        //         {
+        //             return true;
+        //         }
+        //     }
 
-            timeList.Clear();
-            this.outputTrace.EnumerateTimes(indices.output, timeList);
-            for (int i = 0; i < timeList.Count; ++i)
-            {
-                if (checkpoint.ContainsTime(this.internTable.times[timeList.Array[i]]))
-                {
-                    return true;
-                }
-            }
+        //     timeList.Clear();
+        //     this.outputTrace.EnumerateTimes(indices.output, timeList);
+        //     for (int i = 0; i < timeList.Count; ++i)
+        //     {
+        //         if (checkpoint.ContainsTime(this.internTable.times[timeList.Array[i]]))
+        //         {
+        //             return true;
+        //         }
+        //     }
 
-            return false;
-        }
+        //     return false;
+        // }
 
         private Pair<Pair<int, int>, int> CountTimesInCheckpoint(BinaryKeyIndices indices, ICheckpoint<T> checkpoint)
         {
@@ -594,39 +594,78 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
                     this.CompactInternTable();
                 }
 
-                int compactedCount = 0;
-                foreach (var indices in this.keyIndices.Values)
-                {
-                    if (this.HasStateInCheckpoint(indices, checkpoint))
-                    {
-                        ++compactedCount;
-                    }
-                }
+                List<Pair<Pair<K, BinaryKeyIndices>, Pair<Pair<int, int>, int>>> indicesTimeCounts =
+                  new List<Pair<Pair<K, BinaryKeyIndices>, Pair<Pair<int, int>, int>>>();
 
-                writer.Write(compactedCount);
                 foreach (var key in this.keyIndices)
                 {
-                    BinaryKeyIndices indices = key.Value;
-
-                    Pair<Pair<int, int>, int> timeCounts = this.CountTimesInCheckpoint(indices, checkpoint);
-
-                    if (timeCounts.First.First > 0 || timeCounts.First.Second > 0 || timeCounts.Second > 0)
-                    {
-                        writer.Write(key.Key);
-
-                        writer.Write(timeCounts.First.First);
-                        checkpointEntries +=
-                            this.inputTrace1.CheckpointKey(indices.processed1, checkpoint, this.internTable.times, writer);
-
-                        writer.Write(timeCounts.First.Second);
-                        checkpointEntries +=
-                            this.inputTrace2.CheckpointKey(indices.processed2, checkpoint, this.internTable.times, writer);
-
-                        writer.Write(timeCounts.Second);
-                        checkpointEntries +=
-                            this.outputTrace.CheckpointKey(indices.output, checkpoint, this.internTable.times, writer);
-                    }
+                  BinaryKeyIndices indices = key.Value;
+                  Pair<Pair<int, int>, int> timeCount =
+                    this.CountTimesInCheckpoint(indices, checkpoint);
+                  if (timeCount.First.First > 0 ||
+                      timeCount.First.Second > 0 ||
+                      timeCount.Second > 0)
+                  {
+                    indicesTimeCounts.Add((key.Key.PairWith(indices)).PairWith(timeCount));
+                  }
                 }
+                writer.Write(indicesTimeCounts.Count);
+                foreach (var indicesTimeCount in indicesTimeCounts)
+                {
+                  writer.Write(indicesTimeCount.First.First);
+                  writer.Write(indicesTimeCount.Second.First.First);
+                  checkpointEntries +=
+                    this.inputTrace1.CheckpointKey(indicesTimeCount.First.Second.processed1,
+                                                   checkpoint,
+                                                   this.internTable.times,
+                                                   writer);
+                  writer.Write(indicesTimeCount.Second.First.Second);
+                  checkpointEntries +=
+                    this.inputTrace2.CheckpointKey(indicesTimeCount.First.Second.processed2,
+                                                   checkpoint,
+                                                   this.internTable.times,
+                                                   writer);
+                  writer.Write(indicesTimeCount.Second.Second);
+                  checkpointEntries +=
+                    this.outputTrace.CheckpointKey(indicesTimeCount.First.Second.output,
+                                                   checkpoint,
+                                                   this.internTable.times,
+                                                   writer);
+                }
+
+                // int compactedCount = 0;
+                // foreach (var indices in this.keyIndices.Values)
+                // {
+                //     if (this.HasStateInCheckpoint(indices, checkpoint))
+                //     {
+                //         ++compactedCount;
+                //     }
+                // }
+
+                // writer.Write(compactedCount);
+                // foreach (var key in this.keyIndices)
+                // {
+                //     BinaryKeyIndices indices = key.Value;
+
+                //     Pair<Pair<int, int>, int> timeCounts = this.CountTimesInCheckpoint(indices, checkpoint);
+
+                //     if (timeCounts.First.First > 0 || timeCounts.First.Second > 0 || timeCounts.Second > 0)
+                //     {
+                //         writer.Write(key.Key);
+
+                //         writer.Write(timeCounts.First.First);
+                //         checkpointEntries +=
+                //             this.inputTrace1.CheckpointKey(indices.processed1, checkpoint, this.internTable.times, writer);
+
+                //         writer.Write(timeCounts.First.Second);
+                //         checkpointEntries +=
+                //             this.inputTrace2.CheckpointKey(indices.processed2, checkpoint, this.internTable.times, writer);
+
+                //         writer.Write(timeCounts.Second);
+                //         checkpointEntries +=
+                //             this.outputTrace.CheckpointKey(indices.output, checkpoint, this.internTable.times, writer);
+                //     }
+                // }
 
                 this.keysToProcess.Checkpoint(writer);
             }
@@ -1278,42 +1317,42 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
             }
         }
 
-        private bool HasStateInCheckpoint(BinaryKeyIndices indices, ICheckpoint<T> checkpoint)
-        {
-            // we don't care about unprocessed times since they will be replayed when the checkpoint is restored
+        // private bool HasStateInCheckpoint(BinaryKeyIndices indices, ICheckpoint<T> checkpoint)
+        // {
+        //     // we don't care about unprocessed times since they will be replayed when the checkpoint is restored
 
-            NaiadList<int> timeList = new NaiadList<int>(16);
-            this.inputTrace1.EnumerateTimes(indices.processed1, timeList);
-            for (int i = 0; i < timeList.Count; ++i)
-            {
-                if (checkpoint.ContainsTime(this.internTable.times[timeList.Array[i]]))
-                {
-                    return true;
-                }
-            }
+        //     NaiadList<int> timeList = new NaiadList<int>(16);
+        //     this.inputTrace1.EnumerateTimes(indices.processed1, timeList);
+        //     for (int i = 0; i < timeList.Count; ++i)
+        //     {
+        //         if (checkpoint.ContainsTime(this.internTable.times[timeList.Array[i]]))
+        //         {
+        //             return true;
+        //         }
+        //     }
 
-            timeList.Clear();
-            this.inputTrace2.EnumerateTimes(indices.processed2, timeList);
-            for (int i = 0; i < timeList.Count; ++i)
-            {
-                if (checkpoint.ContainsTime(this.internTable.times[timeList.Array[i]]))
-                {
-                    return true;
-                }
-            }
+        //     timeList.Clear();
+        //     this.inputTrace2.EnumerateTimes(indices.processed2, timeList);
+        //     for (int i = 0; i < timeList.Count; ++i)
+        //     {
+        //         if (checkpoint.ContainsTime(this.internTable.times[timeList.Array[i]]))
+        //         {
+        //             return true;
+        //         }
+        //     }
 
-            timeList.Clear();
-            this.outputTrace.EnumerateTimes(indices.output, timeList);
-            for (int i = 0; i < timeList.Count; ++i)
-            {
-                if (checkpoint.ContainsTime(this.internTable.times[timeList.Array[i]]))
-                {
-                    return true;
-                }
-            }
+        //     timeList.Clear();
+        //     this.outputTrace.EnumerateTimes(indices.output, timeList);
+        //     for (int i = 0; i < timeList.Count; ++i)
+        //     {
+        //         if (checkpoint.ContainsTime(this.internTable.times[timeList.Array[i]]))
+        //         {
+        //             return true;
+        //         }
+        //     }
 
-            return false;
-        }
+        //     return false;
+        // }
 
         private Pair<Pair<int, int>, int> CountTimesInCheckpoint(BinaryKeyIndices indices, ICheckpoint<T> checkpoint)
         {
@@ -1401,39 +1440,78 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
                     this.CompactInternTable();
                 }
 
-                int compactedCount = 0;
-                foreach (var indices in this.keyIndices.Values)
-                {
-                    if (this.HasStateInCheckpoint(indices, checkpoint))
-                    {
-                        ++compactedCount;
-                    }
-                }
+                List<Pair<Pair<K, BinaryKeyIndices>, Pair<Pair<int, int>, int>>> indicesTimeCounts =
+                  new List<Pair<Pair<K, BinaryKeyIndices>, Pair<Pair<int, int>, int>>>();
 
-                writer.Write(compactedCount);
                 foreach (var key in this.keyIndices)
                 {
-                    BinaryKeyIndices indices = key.Value;
-
-                    Pair<Pair<int, int>, int> timeCounts = this.CountTimesInCheckpoint(indices, checkpoint);
-
-                    if (timeCounts.First.First > 0 || timeCounts.First.Second > 0 || timeCounts.Second > 0)
-                    {
-                        writer.Write(key.Key);
-
-                        writer.Write(timeCounts.First.First);
-                        checkpointEntries +=
-                            this.inputTrace1.CheckpointKey(indices.processed1, checkpoint, this.internTable.times, writer);
-
-                        writer.Write(timeCounts.First.Second);
-                        checkpointEntries +=
-                            this.inputTrace2.CheckpointKey(indices.processed2, checkpoint, this.internTable.times, writer);
-
-                        writer.Write(timeCounts.Second);
-                        checkpointEntries +=
-                            this.outputTrace.CheckpointKey(indices.output, checkpoint, this.internTable.times, writer);
-                    }
+                  BinaryKeyIndices indices = key.Value;
+                  Pair<Pair<int, int>, int> timeCount =
+                    this.CountTimesInCheckpoint(indices, checkpoint);
+                  if (timeCount.First.First > 0 ||
+                      timeCount.First.Second > 0 ||
+                      timeCount.Second > 0)
+                  {
+                    indicesTimeCounts.Add((key.Key.PairWith(indices)).PairWith(timeCount));
+                  }
                 }
+                writer.Write(indicesTimeCounts.Count);
+                foreach (var indicesTimeCount in indicesTimeCounts)
+                {
+                  writer.Write(indicesTimeCount.First.First);
+                  writer.Write(indicesTimeCount.Second.First.First);
+                  checkpointEntries +=
+                    this.inputTrace1.CheckpointKey(indicesTimeCount.First.Second.processed1,
+                                                   checkpoint,
+                                                   this.internTable.times,
+                                                   writer);
+                  writer.Write(indicesTimeCount.Second.First.Second);
+                  checkpointEntries +=
+                    this.inputTrace2.CheckpointKey(indicesTimeCount.First.Second.processed2,
+                                                   checkpoint,
+                                                   this.internTable.times,
+                                                   writer);
+                  writer.Write(indicesTimeCount.Second.Second);
+                  checkpointEntries +=
+                    this.outputTrace.CheckpointKey(indicesTimeCount.First.Second.output,
+                                                   checkpoint,
+                                                   this.internTable.times,
+                                                   writer);
+                }
+
+                // int compactedCount = 0;
+                // foreach (var indices in this.keyIndices.Values)
+                // {
+                //     if (this.HasStateInCheckpoint(indices, checkpoint))
+                //     {
+                //         ++compactedCount;
+                //     }
+                // }
+
+                // writer.Write(compactedCount);
+                // foreach (var key in this.keyIndices)
+                // {
+                //     BinaryKeyIndices indices = key.Value;
+
+                //     Pair<Pair<int, int>, int> timeCounts = this.CountTimesInCheckpoint(indices, checkpoint);
+
+                //     if (timeCounts.First.First > 0 || timeCounts.First.Second > 0 || timeCounts.Second > 0)
+                //     {
+                //         writer.Write(key.Key);
+
+                //         writer.Write(timeCounts.First.First);
+                //         checkpointEntries +=
+                //             this.inputTrace1.CheckpointKey(indices.processed1, checkpoint, this.internTable.times, writer);
+
+                //         writer.Write(timeCounts.First.Second);
+                //         checkpointEntries +=
+                //             this.inputTrace2.CheckpointKey(indices.processed2, checkpoint, this.internTable.times, writer);
+
+                //         writer.Write(timeCounts.Second);
+                //         checkpointEntries +=
+                //             this.outputTrace.CheckpointKey(indices.output, checkpoint, this.internTable.times, writer);
+                //     }
+                // }
 
                 writer.Write(this.KeysToProcessAtTimes.Count);
                 foreach (var time in this.KeysToProcessAtTimes)
