@@ -211,8 +211,7 @@ namespace FaultToleranceExamples.ConnectedComponents
                 // set up the CC computation
                 var edges = computation.NewInputCollection<IntPair>();
 
-//                edges.SetCheckpointType(CheckpointType.Stateless).SetCheckpointPolicy(s => new CheckpointEagerly());
-//                edges.SetCheckpointType(CheckpointType.Stateless).SetCheckpointPolicy(s => new CheckpointByTime(2000));
+                edges.SetCheckpointType(CheckpointType.Stateless).SetCheckpointPolicy(s => new CheckpointEagerly());
 
                 //Func<IntPair, int> priorityFunction = node => 0;
                 //Func<IntPair, int> priorityFunction = node => Math.Min(node.t, 100);
@@ -221,8 +220,7 @@ namespace FaultToleranceExamples.ConnectedComponents
                 var cc = edges.ConnectedComponents(priorityFunction)
                                   .Count(n => n.t, (l, c) => c)  // counts results with each label
                   .Consolidate();
-//                cc.SetCheckpointType(CheckpointType.Stateless).SetCheckpointPolicy(s => new CheckpointEagerly());
-//                cc.SetCheckpointType(CheckpointType.Stateless).SetCheckpointPolicy(s => new CheckpointByTime(2000));
+                cc.SetCheckpointType(CheckpointType.Stateless).SetCheckpointPolicy(s => new CheckpointEagerly());
                 var output = cc.Subscribe(l =>
                     {
                       Console.Error.WriteLine("Time to process: {0}", stopwatch.Elapsed);
@@ -234,7 +232,7 @@ namespace FaultToleranceExamples.ConnectedComponents
                 Console.Error.WriteLine("Connected components on a random graph ({0} nodes, {1} edges)",
                                         nodeCount, edgeCount);
 
-                if (computation.Configuration.ProcessID == 0)
+                if (computation.Configuration.ProcessID == 0 && !noFaultTolerance)
                 {
                   manager.Initialize(computation,
                                      new int[] {cc.Output.ForStage.StageId},
@@ -253,8 +251,8 @@ namespace FaultToleranceExamples.ConnectedComponents
                     Console.WriteLine("Time post first sync {0}", stopwatch.ElapsedMilliseconds);
                     stopwatch.Restart();
                     int j = 0;
-                    int curEpoch = 0;
-                    for (; curEpoch < numEpochsToRun; curEpoch++)
+                    int curEpoch = 1;
+                    for (; curEpoch <= numEpochsToRun; curEpoch++)
                     {
                         List<Weighted<IntPair>> changes = new List<Weighted<IntPair>>();
                         for (int k = 0; k < changesPerEpoch; ++k, ++j)
@@ -265,11 +263,23 @@ namespace FaultToleranceExamples.ConnectedComponents
                         }
                         edges.OnNext(changes);
                     }
-                    output.Sync(curEpoch - 1);
+                    output.Sync(numEpochsToRun);
                     Console.WriteLine("Total time {0}", stopwatch.ElapsedMilliseconds);
+                }
+                else
+                {
+                  int curEpoch = 1;
+                  for (; curEpoch <= numEpochsToRun; curEpoch++)
+                  {
+                    edges.OnNext();
+                  }
                 }
                 edges.OnCompleted();
                 computation.Join();
+                if (computation.Configuration.ProcessID == 0 && !noFaultTolerance)
+                {
+                  manager.Join();
+                }
             }
 
         }

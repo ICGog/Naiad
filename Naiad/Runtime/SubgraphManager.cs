@@ -806,6 +806,11 @@ namespace Microsoft.Research.Naiad
             }
             else
             {
+                if (this.Controller.Configuration.LoggingEnabled)
+                {
+                  this.checkpointTracker.Complete();
+                }
+
                 foreach (var input in this.streamingInputs)
                     input.Join();
 

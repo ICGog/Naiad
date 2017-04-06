@@ -177,6 +177,12 @@ namespace Microsoft.Research.Naiad.Runtime.FaultTolerance
             }
         }
 
+        public void Complete()
+        {
+          this.updater.OnCompleted();
+          this.gcDataSource.OnCompleted();
+        }
+
         public int GetUpdateReceiverVertex(VertexLocation location)
         {
             return this.updaterStage.Placement
