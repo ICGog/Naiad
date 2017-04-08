@@ -584,6 +584,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
                 if (checkpoint.IsFullCheckpoint)
                 {
                     this.CompactInternTable();
+                    this.curKeyIndices = this.keyIndices;
                 }
 
                 List<Pair<Pair<int, BinaryKeyIndices>, Pair<Pair<int, int>, int>>> indicesTimeCounts =
@@ -773,7 +774,6 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
         {
             if (!this.isShutdown)
             {
-                this.curKeyIndices = new BinaryKeyIndices[65536][];
                 LatticeInternTable<T> newInternTable = new LatticeInternTable<T>();
                 bool[] usedTimes = new bool[this.internTable.count];
 
@@ -791,9 +791,8 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
                             this.inputTrace2.EnsureStateIsCurrentWRTAdvancedTimes(ref indices.unprocessed2);
                             this.outputTrace.EnsureStateIsCurrentWRTAdvancedTimes(ref indices.output);
                             this.keyIndices[outerKeys][innerKeys] = indices;
-                            if (curKeyIndices[outerKeys] == null)
-                              curKeyIndices[outerKeys] = new BinaryKeyIndices[65536];
-                            this.curKeyIndices[outerKeys][innerKeys] = indices;
+                            if (curKeyIndices[outerKeys] != null)
+                              this.curKeyIndices[outerKeys][innerKeys] = indices;
 
                             this.inputTrace1.MarkUsedTimes(indices.processed1, usedTimes);
                             this.inputTrace1.MarkUsedTimes(indices.unprocessed1, usedTimes);

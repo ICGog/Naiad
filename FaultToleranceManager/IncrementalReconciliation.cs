@@ -113,9 +113,9 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
         public long value;
         private const int ABITS = 21;
         private const int AMAX = (1 << ABITS) - 1;
-        private const int BBITS = 21;
+        private const int BBITS = 26;
         private const int BMAX = (1 << BBITS) - 1;
-        private const int CBITS = 21;
+        private const int CBITS = 16;
         private const int CMAX = (1 << CBITS) - 1;
         private const long AMASK = (long)AMAX << (BBITS + CBITS);
         private const long BMASK = (long)BMAX << CBITS;

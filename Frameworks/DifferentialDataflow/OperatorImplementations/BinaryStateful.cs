@@ -597,6 +597,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
                 if (checkpoint.IsFullCheckpoint)
                 {
                     this.CompactInternTable();
+                    this.curKeyIndices = keyIndices;
                 }
 
                 List<Pair<Pair<K, BinaryKeyIndices>, Pair<Pair<int, int>, int>>> indicesTimeCounts =
@@ -756,7 +757,6 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
         {
             if (!this.isShutdown)
             {
-                this.curKeyIndices = new Dictionary<K, BinaryKeyIndices>();
                 LatticeInternTable<T> newInternTable = new LatticeInternTable<T>();
                 bool[] usedTimes = new bool[this.internTable.count];
 
@@ -776,7 +776,8 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
                     else
                     {
                         this.keyIndices[key] = indices;
-                        this.curKeyIndices[key] = indices;
+                        if (this.curKeyIndices.ContainsKey(key))
+                          this.curKeyIndices[key] = indices;
 
                         this.inputTrace1.MarkUsedTimes(indices.processed1, usedTimes);
                         this.inputTrace1.MarkUsedTimes(indices.unprocessed1, usedTimes);
@@ -1458,6 +1459,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
                 if (checkpoint.IsFullCheckpoint)
                 {
                     this.CompactInternTable();
+                    this.curKeyIndices = keyIndices;
                 }
 
                 List<Pair<Pair<K, BinaryKeyIndices>, Pair<Pair<int, int>, int>>> indicesTimeCounts =
@@ -1621,7 +1623,6 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
         {
             if (!this.isShutdown)
             {
-                this.curKeyIndices = new Dictionary<K, BinaryKeyIndices>();
                 LatticeInternTable<T> newInternTable = new LatticeInternTable<T>();
                 bool[] usedTimes = new bool[this.internTable.count];
 
@@ -1641,7 +1642,8 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
                     else
                     {
                         this.keyIndices[key] = indices;
-                        this.curKeyIndices[key] = indices;
+                        if (this.curKeyIndices.ContainsKey(key))
+                          this.curKeyIndices[key] = indices;
 
                         this.inputTrace1.MarkUsedTimes(indices.processed1, usedTimes);
                         this.inputTrace1.MarkUsedTimes(indices.unprocessed1, usedTimes);

@@ -119,7 +119,8 @@ namespace FaultToleranceExamples.ConnectedComponents
         public void Execute(string[] args)
         {
             this.config = Configuration.FromArgs(ref args);
-            this.config.MaxLatticeInternStaleTimes = 10;
+            this.config.MaxLatticeInternStaleTimes = 100;
+            this.config.DefaultCheckpointInterval = 60000;
             string logPrefix = "/mnt/ramdisk/falkirk/";
             bool minimalLogging = false;
             int managerWorkerCount = 4;
@@ -179,7 +180,6 @@ namespace FaultToleranceExamples.ConnectedComponents
 
             System.IO.Directory.CreateDirectory(logPrefix);
             this.config.LogStreamFactory = (s => new FileLogStream(logPrefix, s));
-            this.config.DefaultCheckpointInterval = 1000;
             if (!noFaultTolerance)
             {
               System.IO.Directory.CreateDirectory(Path.Combine(logPrefix, "checkpoint"));
@@ -200,6 +200,7 @@ namespace FaultToleranceExamples.ConnectedComponents
                                               !nonIncrementalFTManager);
             using (var computation = NewComputation.FromConfig(this.config))
             {
+                computation.WithCheckpointPolicy(v => new CheckpointAtBatch<BatchIn<Epoch>>(1));
                 // generate a random graph
                 var random = new Random(0);
                 var graph = new IntPair[edgeCount];
@@ -211,7 +212,7 @@ namespace FaultToleranceExamples.ConnectedComponents
                 // set up the CC computation
                 var edges = computation.NewInputCollection<IntPair>();
 
-                edges.SetCheckpointType(CheckpointType.Stateless).SetCheckpointPolicy(s => new CheckpointEagerly());
+                edges.SetCheckpointType(CheckpointType.Stateless);//.SetCheckpointPolicy(s => new CheckpointEagerly());
 
                 //Func<IntPair, int> priorityFunction = node => 0;
                 //Func<IntPair, int> priorityFunction = node => Math.Min(node.t, 100);
@@ -220,7 +221,7 @@ namespace FaultToleranceExamples.ConnectedComponents
                 var cc = edges.ConnectedComponents(priorityFunction)
                                   .Count(n => n.t, (l, c) => c)  // counts results with each label
                   .Consolidate();
-                cc.SetCheckpointType(CheckpointType.Stateless).SetCheckpointPolicy(s => new CheckpointEagerly());
+                cc.SetCheckpointType(CheckpointType.Stateless);//.SetCheckpointPolicy(s => new CheckpointEagerly());
                 var output = cc.Subscribe(l =>
                     {
                       Console.Error.WriteLine("Time to process: {0}", stopwatch.Elapsed);
