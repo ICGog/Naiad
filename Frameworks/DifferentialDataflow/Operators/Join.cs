@@ -446,6 +446,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.Operators
         {
             if (!this.isShutdown)
             {
+                Console.WriteLine("CompactInternTable");
                 LatticeInternTable<T> newInternTable = new LatticeInternTable<T>();
                 bool[] usedTimes = new bool[this.internTable.count];
 
@@ -1037,6 +1038,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.Operators
         {
             if (!this.isShutdown)
             {
+                Console.WriteLine("CompactInternTable");
                 LatticeInternTable<T> newInternTable = new LatticeInternTable<T>();
                 bool[] usedTimes = new bool[this.internTable.count];
 
