@@ -102,12 +102,12 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.Operators
             if (state.IsEmpty)
             {
               JoinKeys.Remove(k);
-//              curJoinKeys.Remove(k);
+              curJoinKeys.Remove(k);
             }
             else
             {
               JoinKeys[k] = state;
-//              curJoinKeys[k] = state;
+              curJoinKeys[k] = state;
             }
         }
 
@@ -153,12 +153,12 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.Operators
             if (state.IsEmpty)
             {
               JoinKeys.Remove(k);
-//              curJoinKeys.Remove(k);
+              curJoinKeys.Remove(k);
             }
             else
             {
               JoinKeys[k] = state;
-//              curJoinKeys[k] = state;
+              curJoinKeys[k] = state;
             }
         }
 
@@ -297,7 +297,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.Operators
 
             if (!this.isShutdown)
             {
-                foreach (var indices in this.JoinKeys.Values)
+                foreach (var indices in this.curJoinKeys.Values)
                 {
                     checkpointEntries +=
                         this.inputTrace1.CountEntries(indices.processed1, checkpoint, this.internTable.times, true, false).First;
@@ -321,7 +321,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.Operators
                 if (checkpoint.IsFullCheckpoint)
                 {
                     this.CompactInternTable();
-//                    curJoinKeys = JoinKeys;
+                    curJoinKeys = JoinKeys;
                 }
 
                 foreach (var key in this.curJoinKeys)
@@ -458,13 +458,13 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.Operators
                     if (indices.IsEmpty)
                     {
                         this.JoinKeys.Remove(key);
-//                        this.curJoinKeys.Remove(key);
+                        this.curJoinKeys.Remove(key);
                     }
                     else
                     {
                         this.JoinKeys[key] = indices;
-//                        if (this.curJoinKeys.ContainsKey(key))
-//                          this.curJoinKeys[key] = indices;
+                        if (this.curJoinKeys.ContainsKey(key))
+                          this.curJoinKeys[key] = indices;
 
                         this.inputTrace1.MarkUsedTimes(indices.processed1, usedTimes);
                         this.inputTrace2.MarkUsedTimes(indices.processed2, usedTimes);
@@ -597,8 +597,8 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.Operators
             if (JoinKeys[index / 65536] == null)
                 JoinKeys[index / 65536] = new JoinIntKeyIndices[65536];
 
-//            if (curJoinKeys[index / 65536] == null)
-//                curJoinKeys[index / 65536] = new JoinIntKeyIndices[65536];
+            if (curJoinKeys[index / 65536] == null)
+                curJoinKeys[index / 65536] = new JoinIntKeyIndices[65536];
 
             var state = JoinKeys[index / 65536][index % 65536];
 
@@ -633,7 +633,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.Operators
             }
 
             JoinKeys[index / 65536][index % 65536] = state;
-//            curJoinKeys[index / 65536][index % 65536] = state;
+            curJoinKeys[index / 65536][index % 65536] = state;
         }
 
         public override void OnInput2(Weighted<S2> entry, T time)
@@ -645,8 +645,8 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.Operators
 
             if (JoinKeys[index / 65536] == null)
                 JoinKeys[index / 65536] = new JoinIntKeyIndices[65536];
-//            if (curJoinKeys[index / 65536] == null)
-//                curJoinKeys[index / 65536] = new JoinIntKeyIndices[65536];
+            if (curJoinKeys[index / 65536] == null)
+                curJoinKeys[index / 65536] = new JoinIntKeyIndices[65536];
 
             var state = JoinKeys[index / 65536][index % 65536];
 
@@ -681,7 +681,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.Operators
             }
 
             JoinKeys[index / 65536][index % 65536] = state;
-//            curJoinKeys[index / 65536][index % 65536] = state;
+            curJoinKeys[index / 65536][index % 65536] = state;
         }
 
         protected override void OnShutdown()
@@ -849,14 +849,14 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.Operators
 
             if (!this.isShutdown)
             {
-                for (int outerKeys = 0; outerKeys < this.JoinKeys.Length; ++outerKeys)
+                for (int outerKeys = 0; outerKeys < this.curJoinKeys.Length; ++outerKeys)
                 {
-                    if (this.JoinKeys[outerKeys] != null)
+                    if (this.curJoinKeys[outerKeys] != null)
                     {
-                        for (int innerKeys = 0; innerKeys < this.JoinKeys[outerKeys].Length; ++innerKeys)
+                        for (int innerKeys = 0; innerKeys < this.curJoinKeys[outerKeys].Length; ++innerKeys)
                         {
                             int index = (outerKeys * 65536) + innerKeys;
-                            JoinIntKeyIndices indices = this.JoinKeys[outerKeys][innerKeys];
+                            JoinIntKeyIndices indices = this.curJoinKeys[outerKeys][innerKeys];
 
                             checkpointEntries +=
                                 this.inputTrace1.CountEntries(indices.processed1, checkpoint, this.internTable.times, true, false).First;
@@ -883,7 +883,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.Operators
                 if (checkpoint.IsFullCheckpoint)
                 {
                     this.CompactInternTable();
-//                    curJoinKeys = JoinKeys;
+                    curJoinKeys = JoinKeys;
                 }
 
                 for (int outerKeys = 0; outerKeys < this.curJoinKeys.Length;
@@ -1053,8 +1053,8 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.Operators
                             this.inputTrace1.EnsureStateIsCurrentWRTAdvancedTimes(ref indices.processed1);
                             this.inputTrace2.EnsureStateIsCurrentWRTAdvancedTimes(ref indices.processed2);
                             this.JoinKeys[outerKeys][innerKeys] = indices;
-//                            if (curJoinKeys[outerKeys] != null)
-//                              this.curJoinKeys[outerKeys][innerKeys] = indices;
+                            if (curJoinKeys[outerKeys] != null)
+                              this.curJoinKeys[outerKeys][innerKeys] = indices;
 
                             this.inputTrace1.MarkUsedTimes(indices.processed1, usedTimes);
                             this.inputTrace2.MarkUsedTimes(indices.processed2, usedTimes);
