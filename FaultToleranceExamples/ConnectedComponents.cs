@@ -119,7 +119,7 @@ namespace FaultToleranceExamples.ConnectedComponents
         public void Execute(string[] args)
         {
             this.config = Configuration.FromArgs(ref args);
-            this.config.MaxLatticeInternStaleTimes = 40;
+            this.config.MaxLatticeInternStaleTimes = 90;
             this.config.DefaultCheckpointInterval = 60000;
             bool syncEachEpoch = false;
             bool checkpointEagerly = false;
