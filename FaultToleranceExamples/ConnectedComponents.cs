@@ -119,7 +119,7 @@ namespace FaultToleranceExamples.ConnectedComponents
         public void Execute(string[] args)
         {
             this.config = Configuration.FromArgs(ref args);
-            this.config.MaxLatticeInternStaleTimes = 160;
+            this.config.MaxLatticeInternStaleTimes = 100;
             this.config.DefaultCheckpointInterval = 60000;
             bool syncEachEpoch = false;
             bool checkpointEagerly = false;
@@ -212,7 +212,7 @@ namespace FaultToleranceExamples.ConnectedComponents
             {
                 if (!checkpointEagerly)
                 {
-                  computation.WithCheckpointPolicy(v => new CheckpointAtBatch<BatchIn<Epoch>>(1));
+                  computation.WithCheckpointPolicy(v => new CheckpointAtBatch<BatchIn<Epoch>>(2));
                 }
                 // generate a random graph
                 var random = new Random(0);
