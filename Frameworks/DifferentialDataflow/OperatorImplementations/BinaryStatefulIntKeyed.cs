@@ -232,14 +232,14 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
 
             if (keyIndices[index / 65536] == null)
                 keyIndices[index / 65536] = new BinaryKeyIndices[65536];
-//            if (curKeyIndices[index / 65536] == null)
-//                curKeyIndices[index / 65536] = new BinaryKeyIndices[65536];
+            if (curKeyIndices[index / 65536] == null)
+                curKeyIndices[index / 65536] = new BinaryKeyIndices[65536];
 
 
             keysToProcess.Add(index);
 
             inputTrace1.Introduce(ref keyIndices[index / 65536][index % 65536].unprocessed1, value1(entry.record), entry.weight, internTable.Intern(time));
-//            curKeyIndices[index / 65536][index % 65536] = keyIndices[index / 65536][index % 65536];
+            curKeyIndices[index / 65536][index % 65536] = keyIndices[index / 65536][index % 65536];
         }
 
         public virtual void OnInput2(Weighted<S2> entry, T time)
@@ -250,13 +250,13 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
 
             if (keyIndices[index / 65536] == null)
                 keyIndices[index / 65536] = new BinaryKeyIndices[65536];
-//            if (curKeyIndices[index / 65536] == null)
-//                curKeyIndices[index / 65536] = new BinaryKeyIndices[65536];
+            if (curKeyIndices[index / 65536] == null)
+                curKeyIndices[index / 65536] = new BinaryKeyIndices[65536];
 
             keysToProcess.Add(index);
 
             inputTrace2.Introduce(ref keyIndices[index / 65536][index % 65536].unprocessed2, value2(entry.record), entry.weight, internTable.Intern(time));
-//            curKeyIndices[index / 65536][index % 65536] = keyIndices[index / 65536][index % 65536];
+            curKeyIndices[index / 65536][index % 65536] = keyIndices[index / 65536][index % 65536];
         }
 
         public virtual void Compute()
@@ -312,9 +312,9 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
                     outputTrace.ZeroState(ref outputWorkspace);
 
                 keyIndices[index / 65536][index % 65536] = traceIndices;
-//                if (curKeyIndices[index / 65536] == null)
-//                  curKeyIndices[index / 65536] = new BinaryKeyIndices[65536];
-//                curKeyIndices[index / 65536][index % 65536] = traceIndices;
+                if (curKeyIndices[index / 65536] == null)
+                  curKeyIndices[index / 65536] = new BinaryKeyIndices[65536];
+                curKeyIndices[index / 65536][index % 65536] = traceIndices;
             }
         }
 
@@ -551,14 +551,14 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
 
             if (!this.isShutdown)
             {
-                for (int outerKeys = 0; outerKeys < this.keyIndices.Length; ++outerKeys)
+                for (int outerKeys = 0; outerKeys < this.curKeyIndices.Length; ++outerKeys)
                 {
-                    if (this.keyIndices[outerKeys] != null)
+                    if (this.curKeyIndices[outerKeys] != null)
                     {
-                        for (int innerKeys = 0; innerKeys < this.keyIndices[outerKeys].Length; ++innerKeys)
+                        for (int innerKeys = 0; innerKeys < this.curKeyIndices[outerKeys].Length; ++innerKeys)
                         {
                             int index = (outerKeys * 65536) + innerKeys;
-                            BinaryKeyIndices indices = this.keyIndices[outerKeys][innerKeys];
+                            BinaryKeyIndices indices = this.curKeyIndices[outerKeys][innerKeys];
 
                             checkpointEntries +=
                                 this.inputTrace1.CountEntries(indices.processed1, checkpoint, this.internTable.times, true, false).First;
@@ -792,8 +792,8 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
                             this.inputTrace2.EnsureStateIsCurrentWRTAdvancedTimes(ref indices.unprocessed2);
                             this.outputTrace.EnsureStateIsCurrentWRTAdvancedTimes(ref indices.output);
                             this.keyIndices[outerKeys][innerKeys] = indices;
-//                            if (curKeyIndices[outerKeys] != null)
-//                              this.curKeyIndices[outerKeys][innerKeys] = indices;
+                            if (curKeyIndices[outerKeys] != null)
+                              this.curKeyIndices[outerKeys][innerKeys] = indices;
 
                             this.inputTrace1.MarkUsedTimes(indices.processed1, usedTimes);
                             this.inputTrace1.MarkUsedTimes(indices.unprocessed1, usedTimes);
