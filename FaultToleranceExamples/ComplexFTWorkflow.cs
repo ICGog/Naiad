@@ -1106,6 +1106,9 @@ namespace FaultToleranceExamples.ComplexFTWorkflow
                         .Select(edge => new IntPair(edge.otherKey, edge.key))
                         .Concat(input.Select(edge => new IntPair(edge.key, edge.otherKey)));
 
+                    nodes.Print("NumberOfNodes", computation.Controller.Stopwatch);
+                    edges.Print("NumberOfEdges", computation.Controller.Stopwatch);
+
                     // prioritization introduces labels from small to large (in batches).
                     var cc = nodes
                             .Where(x => false)
@@ -1861,6 +1864,7 @@ namespace FaultToleranceExamples.ComplexFTWorkflow
             //Logging.LogLevel = LoggingLevel.Info;
             this.config = Configuration.FromArgs(ref args);
             this.config.MaxLatticeInternStaleTimes = 10;
+            this.config.DefaultCheckpointInterval = 1000;
 
             bool useAzure = false;
             bool useHdfs = false;
@@ -2016,8 +2020,8 @@ namespace FaultToleranceExamples.ComplexFTWorkflow
               SerializationFactory.GetCodeGeneratorForVersion(this.config.SerializerVersion.First,
                                                               this.config.SerializerVersion.Second);
             // TODO(ionel): I should close the streams and the writers.
-            FileStream onNextStream = File.Create("/tmp/falkirk/onNext.log");
-            FileStream onNextGraphStream = File.Create("/tmp/falkirk/onNextGraph.log");
+            FileStream onNextStream = File.Create(logPrefix + "/onNext.log");
+            FileStream onNextGraphStream = File.Create(logPrefix + "/onNextGraph.log");
             NaiadWriter onNextWriter = new NaiadWriter(onNextStream, serFormat);
             NaiadWriter onNextGraphWriter = new NaiadWriter(onNextGraphStream, serFormat);
 
@@ -2046,8 +2050,6 @@ namespace FaultToleranceExamples.ComplexFTWorkflow
                 System.IO.Directory.CreateDirectory(Path.Combine(logPrefix, "checkpoint"));
                 this.config.CheckpointingFactory = s => new FileStreamSequence(Path.Combine(logPrefix, "checkpoint"), s);
             }
-
-            this.config.DefaultCheckpointInterval = 1000;
 
             using (var computation = NewComputation.FromConfig(this.config))
             {

@@ -676,6 +676,10 @@ namespace Microsoft.Research.Naiad
 
         public void RestoreToFrontiers(IEnumerable<CheckpointLowWatermark> frontiers, Action<string> logAction)
         {
+            long totalMicroSeconds = (this.controller.Stopwatch.ElapsedTicks * 1000000L) / System.Diagnostics.Stopwatch.Frequency;
+            this.Controller.WriteLog(
+                String.Format("{0:D3} RTF {1:D7}", this.controller.Configuration.ProcessID, totalMicroSeconds));
+
             this.controller.RestoreToFrontiers(this.Index, frontiers, logAction);
         }
 
