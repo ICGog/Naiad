@@ -49,7 +49,8 @@ namespace FaultToleranceExamples.ConnectedComponents
         /// <summary>
         /// the node names are now introduced in waves. propagation of each wave completes before the next starts.
         /// </summary>
-        public static Collection<IntPair, T> ConnectedComponents<T>(this Collection<IntPair, T> edges, Func<IntPair, int> priorityFunction)
+        public static Collection<IntPair, T> ConnectedComponents<T>(this Collection<IntPair, T> edges,
+                                                                    Func<IntPair, int> priorityFunction)
             where T : Time<T>
         {
             // initial labels only needed for min, as the max will be improved on anyhow.
@@ -127,6 +128,7 @@ namespace FaultToleranceExamples.ConnectedComponents
             bool minimalLogging = false;
             int managerWorkerCount = 4;
             bool nonIncrementalFTManager = false;
+            int checkpointTimeLength = 1;
             int changesPerEpoch = 30;
             int numEpochsToRun = 50;
             // int nodeCount = 5000000;
@@ -183,6 +185,10 @@ namespace FaultToleranceExamples.ConnectedComponents
                         checkpointEagerly = true;
                         i++;
                         break;
+                    case "-checkpointtimelength":
+                        checkpointTimeLength = Int32.Parse(args[i + 1]);
+                        i += 2;
+                        break;
                     default:
                         throw new ApplicationException("Unknown argument " + args[i]);
                 }
@@ -212,7 +218,10 @@ namespace FaultToleranceExamples.ConnectedComponents
             {
                 if (!checkpointEagerly)
                 {
-                  computation.WithCheckpointPolicy(v => new CheckpointAtBatch<BatchIn<Epoch>>(2));
+                  computation.WithCheckpointPolicy(v => new CheckpointAtBatch<BatchIn<Epoch>>(checkpointTimeLength));
+                } else
+                {
+                  computation.WithCheckpointPolicy(v => new CheckpointEagerly());
                 }
                 // generate a random graph
                 var random = new Random(0);
@@ -239,7 +248,7 @@ namespace FaultToleranceExamples.ConnectedComponents
                 Func<IntPair, int> priorityFunction = node => 65536 * (node.t < 10 ? node.t : 10 + Convert.ToInt32(Math.Log(1 + node.t) / Math.Log(2.0)));
 
                 var cc = edges.ConnectedComponents(priorityFunction)
-                                  .Count(n => n.t, (l, c) => c)  // counts results with each label
+                  .Count(n => n.t, (l, c) => c)
                   .Consolidate();
 
                 if (!checkpointEagerly)
