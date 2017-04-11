@@ -1106,8 +1106,8 @@ namespace FaultToleranceExamples.ComplexFTWorkflow
                         .Select(edge => new IntPair(edge.otherKey, edge.key))
                         .Concat(input.Select(edge => new IntPair(edge.key, edge.otherKey)));
 
-                    nodes.Print("NumberOfNodes", computation.Controller.Stopwatch);
-                    edges.Print("NumberOfEdges", computation.Controller.Stopwatch);
+                    nodes.Print("NumberOfNodes", computation.Controller.Stopwatch).SetCheckpointType(CheckpointType.None).SetCheckpointPolicy(v => new CheckpointWithoutPersistence());
+                    edges.Print("NumberOfEdges", computation.Controller.Stopwatch).SetCheckpointType(CheckpointType.None).SetCheckpointPolicy(v => new CheckpointWithoutPersistence());
 
                     // prioritization introduces labels from small to large (in batches).
                     var cc = nodes
