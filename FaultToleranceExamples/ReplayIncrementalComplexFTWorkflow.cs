@@ -1366,8 +1366,6 @@ namespace FaultToleranceExamples.ReplayIncrementalComplexFTWorkflow
       this.config = Configuration.FromArgs(ref args);
       this.config.MaxLatticeInternStaleTimes = 10;
       string logPrefix = "/mnt/ramdisk/falkirk";
-      string onNextGraphFile = logPrefix + "/onNextGraph.log";
-      string onNextFile = logPrefix + "/onNext.log";
       int curEpoch = 0;
       int replayNumEpochs = -1;
       int argIndex = 1;
@@ -1377,14 +1375,6 @@ namespace FaultToleranceExamples.ReplayIncrementalComplexFTWorkflow
       {
         switch (args[argIndex].ToLower())
         {
-          case "-onnextgraphfile":
-            onNextGraphFile = args[argIndex + 1];
-            argIndex += 2;
-            break;
-          case "-onnextfile":
-            onNextFile = args[argIndex + 1];
-            argIndex += 2;
-            break;
           case "-replaynumepochs":
             replayNumEpochs = Int32.Parse(args[argIndex + 1]);
             argIndex += 2;
@@ -1405,6 +1395,9 @@ namespace FaultToleranceExamples.ReplayIncrementalComplexFTWorkflow
             throw new ApplicationException("Unknown argument " + args[argIndex]);
         }
       }
+
+      string onNextGraphFile = logPrefix + "/onNextGraph.log";
+      string onNextFile = logPrefix + "/onNext.log";
 
       this.stageLenghts = new List<int>();
       this.stageTypes = new List<int>();
@@ -1544,7 +1537,7 @@ namespace FaultToleranceExamples.ReplayIncrementalComplexFTWorkflow
                 {
                   foreach (Frontier frontier in frontiers)
                   {
-//                    Console.WriteLine("Frontier: {0}", frontier);
+                    Console.WriteLine("Frontier: {0}", frontier);
                   }
                 }
               } else

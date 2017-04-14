@@ -460,8 +460,7 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
     {
       this.config = Configuration.FromArgs(ref args);
       this.config.MaxLatticeInternStaleTimes = 10;
-      string onNextGraphFile = "/tmp/falkirk/onNextGraph.log";
-      string onNextFile = "/tmp/falkirk/onNext.log";
+      string logPrefix = "/mnt/ramdisk/falkirk";
       int curEpoch = 0;
       int replayNumEpochs = -1;
       int argIndex = 1;
@@ -469,22 +468,20 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
       {
         switch (args[argIndex].ToLower())
         {
-          case "-onnextgraphfile":
-            onNextGraphFile = args[argIndex + 1];
-            argIndex += 2;
-            break;
-          case "-onnextfile":
-            onNextFile = args[argIndex + 1];
-            argIndex += 2;
-            break;
           case "-replaynumepochs":
             replayNumEpochs = Int32.Parse(args[argIndex + 1]);
+            argIndex += 2;
+            break;
+          case "-logprefix":
+            logPrefix = args[argIndex + 1];
             argIndex += 2;
             break;
           default:
             throw new ApplicationException("Unknown argument " + args[argIndex]);
         }
       }
+      string onNextGraphFile = logPrefix + "/onNextGraph.log";
+      string onNextFile = logPrefix + "/onNext.log";
 
       this.stageLenghts = new List<int>();
       this.stageTypes = new List<int>();
@@ -671,6 +668,7 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
                   deliveredMessages.OnNext(deliveredMessageChanges);
                   discardedMessages.OnNext(discardedMessageChanges);
                   computation.Sync(curEpoch);
+
                   Console.Error.WriteLine("Time to process epoch {0}: {1} {2} {3} {4} {5}", curEpoch, stopwatch.ElapsedMilliseconds, checkpointChanges.Count, notificationChanges.Count, deliveredMessageChanges.Count, discardedMessageChanges.Count);
                   curEpoch++;
                 } else
@@ -689,7 +687,7 @@ namespace FaultToleranceExamples.ReplayComplexFTWorkflow
           computation.Join();
           foreach (Frontier frontier in frontierState)
           {
-//            Console.WriteLine("Frontier: {0}", frontier);
+            Console.WriteLine("Frontier: {0}", frontier);
           }
         }
       }
