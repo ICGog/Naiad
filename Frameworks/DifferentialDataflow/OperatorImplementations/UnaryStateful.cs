@@ -982,7 +982,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
                 this.outputTrace.Checkpoint(writer);
 
                 this.keyIndices.Checkpoint(writer);
-                //this.KeysToProcessAtTimes.Checkpoint(writer, keySerializer);
+                this.KeysToProcessAtTimes.Checkpoint(writer);
 
                 this.Input.Checkpoint(writer);
 
@@ -1009,7 +1009,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
                 this.outputTrace.Restore(reader);
 
                 this.keyIndices.Restore(reader);
-                //this.KeysToProcessAtTimes.Restore(reader, keySerializer);
+                this.KeysToProcessAtTimes.Restore(reader);
 
                 this.Input.Restore(reader);
 

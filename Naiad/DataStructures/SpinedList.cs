@@ -228,8 +228,16 @@ namespace Microsoft.Research.Naiad.DataStructures
         public void Checkpoint(NaiadWriter writer, NaiadSerialization<T> serializer, NaiadSerialization<Int32> intSerializer)
         {
             writer.Write(this.Count, intSerializer);
-            for (int i = 0; i < this.Count; ++i)
+            if (this.Spine == null)
+            {
+              for (int i = 0; i < this.Count; ++i)
+                writer.Write(this.Small[i], serializer);
+            }
+            else
+            {
+              for (int i = 0; i < this.Count; ++i)
                 writer.Write(this.Spine[i / 65536][i % 65536], serializer);
+            }
         }
 
         /// <summary>
@@ -242,9 +250,18 @@ namespace Microsoft.Research.Naiad.DataStructures
         {
             int readCount = reader.Read(intSerializer);
             this.count = 0;
-            Array.Clear(this.Spine, 0, this.Spine.Length);
-            for (int i = 0; i < readCount; ++i)
+            if (this.Spine == null)
+            {
+              Array.Clear(this.Small, 0, this.Small.Length);
+              for (int i = 0; i < readCount; ++i)
                 this.Add(reader.Read(serializer));
+            }
+            else
+            {
+              Array.Clear(this.Spine, 0, this.Spine.Length);
+              for (int i = 0; i < readCount; ++i)
+                this.Add(reader.Read(serializer));
+            }
         }
 
         /// <summary>
