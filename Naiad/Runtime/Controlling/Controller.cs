@@ -102,9 +102,9 @@ namespace Microsoft.Research.Naiad
         #region Checkpoint / Restore
 
         //void Checkpoint(bool major);
-        //void Checkpoint(string path, int epoch);
+        //void Checkpoint(string path, int epoch, int computationIndex);
         
-        //void Restore(string path, int epoch);
+        //void Restore(string path, int epoch, int computationIndex);
         //void Restore(NaiadReader reader);
 
         //void Pause();
@@ -184,6 +184,9 @@ namespace Microsoft.Research.Naiad
         bool HasFailed { get; }
         long TicksSinceStartup { get; }
 
+      void Pause();
+      void Resume();
+
         void PausePeerProcesses(IEnumerable<int> processes);
         void StartRollback(Action<string> logAction);
 
@@ -196,6 +199,9 @@ namespace Microsoft.Research.Naiad
         InternalComputation GetInternalComputation(int index);
 
         void WriteLog(string entry);
+
+        void Checkpoint(string path, int epoch, int computationIndex);
+        void Restore(string path, int epoch, int computationIndex);
 
         Controller ExternalController { get; }
     }
@@ -596,73 +602,72 @@ namespace Microsoft.Research.Naiad
             throw new NotImplementedException();
         }
 
-        public void Checkpoint(string path, int epoch)
+        public void Checkpoint(string path, int epoch, int computationIndex)
         {
-            throw new NotImplementedException();
-
-            
-#if false
             Stopwatch checkpointWatch = Stopwatch.StartNew();
 
-            foreach (var input in this.currentGraphManager.Inputs)
+            SerializationFormat serFormat =
+              SerializationFactory.GetCodeGeneratorForVersion(this.configuration.SerializerVersion.First,
+                                                              this.configuration.SerializerVersion.Second);
+
+            foreach (Dataflow.InputStage input in this.baseComputations[computationIndex].Inputs)
             {
                 using (FileStream collectionFile = File.OpenWrite(Path.Combine(path, string.Format("input_{0}_{1}.vertex", input.InputId, epoch))))
-                using (NaiadWriter collectionWriter = new NaiadWriter(collectionFile))
+                  using (NaiadWriter collectionWriter = new NaiadWriter(collectionFile, serFormat))
                 {
-                    input.Checkpoint(collectionWriter);
-                    Console.Error.WriteLine("Read  {0}: {1} objects", input.ToString(), collectionWriter.objectsWritten);
+                    input.CheckpointFull(collectionWriter);
+//                    Console.Error.WriteLine("Read  {0}: {1} objects", input.ToString(), collectionWriter.objectsWritten);
                 }
             }
-            foreach (var vertex in this.currentGraphManager.Stages.Values.SelectMany(x => x.Vertices.Where(s => s.Stateful)))
+            foreach (Vertex vertex in this.baseComputations[computationIndex].Stages.Select(x => x.Value).SelectMany(x => x.Vertices.Where(s => s.Stateful)))
             {
-                vertex.Checkpoint(false);
+//                vertex.Checkpoint(false);
                 using (FileStream vertexFile = File.OpenWrite(Path.Combine(path, string.Format("{0}_{1}_{2}.vertex", vertex.Stage.StageId, vertex.VertexId, epoch))))
-                using (NaiadWriter vertexWriter = new NaiadWriter(vertexFile))
+                  using (NaiadWriter vertexWriter = new NaiadWriter(vertexFile, serFormat))
                 {
                     vertex.Checkpoint(vertexWriter);
-                    Console.Error.WriteLine("Wrote {0}: {1} objects", vertex.ToString(), vertexWriter.objectsWritten);
+//                    Console.Error.WriteLine("Wrote {0}: {1} objects", vertex.ToString(), vertexWriter.objectsWritten);
                 }
             }
 
             Console.Error.WriteLine("!! Total checkpoint took time = {0}", checkpointWatch.Elapsed);
-#endif
 
         }
 
-        public void Restore(string path, int epoch)
+        public void Restore(string path, int epoch, int computationIndex)
         {
-            throw new NotImplementedException();
-
-#if false
             Stopwatch checkpointWatch = Stopwatch.StartNew();
-            
-            // Need to do this to ensure that all stages exist.
-            this.currentGraphManager.MaterializeAll();
 
-            foreach (var input in this.currentGraphManager.Inputs)
+            SerializationFormat serFormat =
+              SerializationFactory.GetCodeGeneratorForVersion(this.configuration.SerializerVersion.First,
+                                                              this.configuration.SerializerVersion.Second);
+
+            // Need to do this to ensure that all stages exist.
+            this.baseComputations[computationIndex].MaterializeAll(false);
+
+            foreach (var input in this.baseComputations[computationIndex].Inputs)
             {
                 using (FileStream collectionFile = File.OpenRead(Path.Combine(path, string.Format("input_{0}_{1}.vertex", input.InputId, epoch))))
-                using (NaiadReader collectionReader = new NaiadReader(collectionFile))
+                using (NaiadReader collectionReader = new NaiadReader(collectionFile, serFormat))
                 {
-                    input.Restore(collectionReader);
-                    Console.Error.WriteLine("Read  {0}: {1} objects", input.ToString(), collectionReader.objectsRead);
+                    input.RestoreFull(collectionReader);
+//                    Console.Error.WriteLine("Read  {0}: {1} objects", input.ToString(), collectionReader.objectsRead);
                 }
             }
-            foreach (var vertex in this.currentGraphManager.Stages.Values.SelectMany(x => x.Vertices.Where(s => s.Stateful)))
+            foreach (var vertex in this.baseComputations[computationIndex].Stages.Select(x => x.Value).SelectMany(x => x.Vertices.Where(s => s.Stateful)))
             {
                 using (FileStream vertexFile = File.OpenRead(Path.Combine(path, string.Format("{0}_{1}_{2}.vertex", vertex.Stage.StageId, vertex.VertexId, epoch))))
-                using (NaiadReader vertexReader = new NaiadReader(vertexFile))
+                using (NaiadReader vertexReader = new NaiadReader(vertexFile, serFormat))
                 {
                     vertex.Restore(vertexReader);
-                    Console.Error.WriteLine("Read  {0}: {1} objects", vertex.ToString(), vertexReader.objectsRead);
+//                    Console.Error.WriteLine("Read  {0}: {1} objects", vertex.ToString(), vertexReader.objectsRead);
                 }
             }
             this.Workers.Activate();
-            this.currentGraphManager.Activate();
+            this.baseComputations[computationIndex].Activate();
             
             Console.Error.WriteLine("!! Total restore took time = {0}", checkpointWatch.Elapsed);
             Logging.Info("! Reactivated the controller");
-#endif
         }
 
         public void Restore(NaiadReader reader)
@@ -773,6 +778,19 @@ namespace Microsoft.Research.Naiad
                     scheduler.Abort();
             }
 
+            public void PauseWithoutRollback()
+            {
+                using (CountdownEvent pauseCountdown = new CountdownEvent(this.schedulers.Length))
+                {
+                    lock (this)
+                    {
+                        foreach (Scheduler scheduler in this.schedulers)
+                            scheduler.PauseWithoutRollback(pauseCountdown);
+                    }
+                    pauseCountdown.Wait();
+                }
+            }
+
             public void Pause()
             {
                 using (CountdownEvent pauseCountdown = new CountdownEvent(this.schedulers.Length))
@@ -803,6 +821,12 @@ namespace Microsoft.Research.Naiad
             {
                 foreach (Scheduler scheduler in this.schedulers)
                     scheduler.Resume();
+            }
+
+            public void ResumeWithoutRollback()
+            {
+                foreach (Scheduler scheduler in this.schedulers)
+                    scheduler.ResumeWithoutRollback();
             }
 
             internal void DrainAllQueuedMessages()
@@ -1203,6 +1227,26 @@ namespace Microsoft.Research.Naiad
             {
                 this.ticksAtStartup = DateTime.Now.Ticks;
             }
+        }
+
+        public void Pause()
+        {
+          this.Workers.PauseWithoutRollback();
+          if (this.networkChannel != null && this.networkChannel is Snapshottable)
+          {
+            ((Snapshottable)this.networkChannel).AnnounceStopCheckpoint();
+            ((Snapshottable)this.networkChannel).WaitForAllCheckpointMessages();
+          }
+          this.workerGroup.DrainAllQueuedMessages();
+        }
+
+        public void Resume()
+        {
+          this.Workers.ResumeWithoutRollback();
+          if (this.networkChannel != null && this.networkChannel is Snapshottable)
+          {
+            ((Snapshottable)this.networkChannel).ResumeAfterCheckpoint();
+          }
         }
 
         public void Pause(Action<string> logAction)

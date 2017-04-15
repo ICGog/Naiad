@@ -45,7 +45,8 @@ namespace Microsoft.Research.Naiad.Runtime.Controlling
         void Pause();
         void SimulateFailure();
         void Resume();
-
+        void PauseWithoutRollback();
+        void ResumeWithoutRollback();
         int IncrementSharedQueueCount(int queuedItemCount);
         int DecrementSharedQueueCount(int dequeuedItemCount);
 

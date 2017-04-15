@@ -397,12 +397,12 @@ namespace Microsoft.Research.Naiad.Runtime.Progress
             this.PCS.Reset();
         }
 
-        protected override void Checkpoint(NaiadWriter writer)
+        public override void Checkpoint(NaiadWriter writer)
         {
             this.PCS.Checkpoint(writer, this.SerializationFormat.GetSerializer<long>(), this.SerializationFormat.GetSerializer<Pointstamp>(), this.SerializationFormat.GetSerializer<int>());
         }
 
-        protected override void Restore(NaiadReader reader)
+        public override void Restore(NaiadReader reader)
         {
             this.PCS.Restore(reader, this.SerializationFormat.GetSerializer<long>(), this.SerializationFormat.GetSerializer<Pointstamp>(), this.SerializationFormat.GetSerializer<int>());
         }
@@ -549,8 +549,8 @@ namespace Microsoft.Research.Naiad.Runtime.Progress
 
         public event EventHandler<FrontierChangedEventArgs> OnFrontierChanged;
 
-        protected override void Checkpoint(NaiadWriter writer) { this.PCS.Checkpoint(writer, this.SerializationFormat.GetSerializer<long>(), this.SerializationFormat.GetSerializer<Pointstamp>(), this.SerializationFormat.GetSerializer<int>()); }
-        protected override void Restore(NaiadReader reader) { this.PCS.Restore(reader, this.SerializationFormat.GetSerializer<long>(), this.SerializationFormat.GetSerializer<Pointstamp>(), this.SerializationFormat.GetSerializer<int>()); }
+        public override void Checkpoint(NaiadWriter writer) { this.PCS.Checkpoint(writer, this.SerializationFormat.GetSerializer<long>(), this.SerializationFormat.GetSerializer<Pointstamp>(), this.SerializationFormat.GetSerializer<int>()); }
+        public override void Restore(NaiadReader reader) { this.PCS.Restore(reader, this.SerializationFormat.GetSerializer<long>(), this.SerializationFormat.GetSerializer<Pointstamp>(), this.SerializationFormat.GetSerializer<int>()); }
 
         internal ProgressUpdateCentralizer(int index, Stage<Empty> stage, ProgressUpdateAggregator aggregator)
             : base(index, stage)

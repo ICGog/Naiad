@@ -2211,6 +2211,15 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
             }
         }
 
+        public void StopComputation(int epoch)
+        {
+          this.computation.StopTheWorld();
+          Console.WriteLine("StoppedTheWorld");
+//          Thread.Sleep(2000);
+          this.computation.ResumeTheWorld();
+          Console.WriteLine("ResumedTheWorld");
+        }
+
         public void PerformRollback(IEnumerable<int> pauseImmediately, IEnumerable<int> pauseAfterRecovery, IEnumerable<int> pauseLast)
         {
             lock (this)

@@ -393,7 +393,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
          *     (T,NaiadList<Weighted<S>>)*recordsToProcessCount recordsToProcess2
          */
 
-        protected override void Checkpoint(NaiadWriter writer)
+        public override void Checkpoint(NaiadWriter writer)
         {
             base.Checkpoint(writer);
             writer.Write(this.IsShutDown);
@@ -402,8 +402,16 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
                 this.internTable.Checkpoint(writer);
                 this.inputTrace1.Checkpoint(writer);
                 this.inputTrace2.Checkpoint(writer);
-                this.outputTrace.Checkpoint(writer);
-
+                var boolSerializer = this.SerializationFormat.GetSerializer<bool>();
+                if (this.outputTrace != null)
+                {
+                  writer.Write(true, boolSerializer);
+                  this.outputTrace.Checkpoint(writer);
+                }
+                else
+                {
+                  writer.Write(false, boolSerializer);
+                }
                 this.keyIndices.Checkpoint(writer);
 
                 this.Input1.Checkpoint(writer);
@@ -427,7 +435,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
             }
         }
 
-        protected override void Restore(NaiadReader reader)
+        public override void Restore(NaiadReader reader)
         {
             base.Restore(reader);
             this.isShutdown = reader.Read<bool>();
@@ -437,7 +445,10 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
                 this.internTable.Restore(reader);
                 this.inputTrace1.Restore(reader);
                 this.inputTrace2.Restore(reader);
-                this.outputTrace.Restore(reader);
+
+                bool hasOutputTrace = reader.Read<bool>();
+                if (hasOutputTrace)
+                  this.outputTrace.Restore(reader);
 
                 this.keyIndices.Restore(reader);
 
@@ -1256,7 +1267,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
          *     (T,NaiadList<Weighted<S>>)*recordsToProcessCount recordsToProcess2
          */
 
-        protected override void Checkpoint(NaiadWriter writer)
+        public override void Checkpoint(NaiadWriter writer)
         {
             base.Checkpoint(writer);
             writer.Write(this.isShutdown);
@@ -1265,7 +1276,16 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
                 this.internTable.Checkpoint(writer);
                 this.inputTrace1.Checkpoint(writer);
                 this.inputTrace2.Checkpoint(writer);
-                this.outputTrace.Checkpoint(writer);
+                var boolSerializer = this.SerializationFormat.GetSerializer<bool>();
+                if (outputTrace != null)
+                {
+                  writer.Write(true, boolSerializer);
+                  this.outputTrace.Checkpoint(writer);
+                }
+                else
+                {
+                  writer.Write(false, boolSerializer);
+                }
 
                 this.keyIndices.Checkpoint(writer);
 
@@ -1290,7 +1310,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
             }
         }
 
-        protected override void Restore(NaiadReader reader)
+        public override void Restore(NaiadReader reader)
         {
             base.Restore(reader);
             this.isShutdown = reader.Read<bool>();
@@ -1300,7 +1320,10 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
                 this.internTable.Restore(reader);
                 this.inputTrace1.Restore(reader);
                 this.inputTrace2.Restore(reader);
-                this.outputTrace.Restore(reader);
+
+                bool hasOutputTrace = reader.Read<bool>();
+                if (hasOutputTrace)
+                  this.outputTrace.Restore(reader);
 
                 this.keyIndices.Restore(reader);
 

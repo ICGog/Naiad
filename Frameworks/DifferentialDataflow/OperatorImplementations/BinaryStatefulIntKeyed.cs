@@ -396,7 +396,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
         //private static NaiadSerialization<Weighted<S1>> weightedS1Serializer = null;
         //private static NaiadSerialization<Weighted<S2>> weightedS2Serializer = null;
 
-        protected override void Checkpoint(NaiadWriter writer)
+        public override void Checkpoint(NaiadWriter writer)
         {
             base.Checkpoint(writer);
             writer.Write(this.isShutdown);
@@ -427,7 +427,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
         protected readonly bool inputImmutable1 = false;
         protected readonly bool inputImmutable2 = false;
 
-        protected override void Restore(NaiadReader reader)
+        public override void Restore(NaiadReader reader)
         {
             base.Restore(reader);
             

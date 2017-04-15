@@ -26,7 +26,7 @@ using System.Text;
 namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.CollectionTrace
 {
 
-    internal struct CollectionTraceWithHeapIncrement : IEquatable<CollectionTraceWithHeapIncrement>
+    public struct CollectionTraceWithHeapIncrement : IEquatable<CollectionTraceWithHeapIncrement>
     {
         public OffsetLength OffsetLength;
         public int TimeIndex;

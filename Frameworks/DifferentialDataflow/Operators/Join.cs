@@ -205,7 +205,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.Operators
          *     Dictionary<K,JoinKeyIndices> JoinKeys
          */
 
-        protected override void Checkpoint(NaiadWriter writer)
+        public override void Checkpoint(NaiadWriter writer)
         {
             base.Checkpoint(writer);
             if (!this.isShutdown)
@@ -214,7 +214,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.Operators
             }
         }
 
-        protected override void Restore(NaiadReader reader)
+        public override void Restore(NaiadReader reader)
         {
             base.Restore(reader);
             if (!this.isShutdown)
@@ -736,7 +736,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.Operators
          *     (int n,n*BinaryKeyIndices|-1)*keyIndicesLength   keyIndices
          */
 
-        protected override void Checkpoint(NaiadWriter writer)
+        public override void Checkpoint(NaiadWriter writer)
         {
             base.Checkpoint(writer);
             if (!this.isShutdown)
@@ -755,7 +755,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.Operators
             }
         }
 
-        protected override void Restore(NaiadReader reader)
+        public override void Restore(NaiadReader reader)
         {
             base.Restore(reader);
             if (!this.isShutdown)

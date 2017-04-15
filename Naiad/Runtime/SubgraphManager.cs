@@ -170,6 +170,26 @@ namespace Microsoft.Research.Naiad
             this.computation.Restore();
         }
 
+        public void CheckpointAll(string path, int epoch)
+        {
+            this.computation.CheckpointAll(path, epoch);
+        }
+
+        public void RestoreAll(string path, int epoch)
+        {
+            this.computation.RestoreAll(path, epoch);
+        }
+
+        public void StopTheWorld()
+        {
+            this.computation.StopTheWorld();
+        }
+
+        public void ResumeTheWorld()
+        {
+            this.computation.ResumeTheWorld();
+        }
+
         public long TicksSinceStartup { get { return this.computation.TicksSinceStartup; } }
 
         public TemporaryPlacement WithPlacement(Placement scopedPlacement)
@@ -296,6 +316,12 @@ namespace Microsoft.Research.Naiad
         /// </summary>
         /// <param name="processors">processes to pause</param>
         void PausePeerProcesses(IEnumerable<int> processors);
+
+        void StopTheWorld();
+        void ResumeTheWorld();
+
+        void CheckpointAll(string path, int epoch);
+        void RestoreAll(string path, int epoch);
 
         /// <summary>
         /// Tell the computation to initiate roll back, pausing all the workers
@@ -1116,6 +1142,26 @@ namespace Microsoft.Research.Naiad
                 this.sleepingWorkersEvent.Wait();
             }
         }
+
+      public void CheckpointAll(string path, int epoch)
+      {
+        this.controller.Checkpoint(path, epoch, index);
+      }
+
+      public void RestoreAll(string path, int epoch)
+      {
+        this.controller.Restore(path, epoch, index);
+      }
+
+      public void StopTheWorld()
+      {
+        this.controller.Pause();
+      }
+
+      public void ResumeTheWorld()
+      {
+        this.controller.Resume();
+      }
 
         public void ReceiveCheckpointFrontiersAndRepairProgress(IEnumerable<CheckpointLowWatermark> frontiers)
         {

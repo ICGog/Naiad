@@ -62,6 +62,8 @@ namespace Microsoft.Research.Naiad.Dataflow
         void BlockExternalCalls();
         void ReleaseExternalCalls();
         void ReMaterializeForRollback();
+        void CheckpointFull(NaiadWriter writer);
+        void RestoreFull(NaiadReader reader);
         IEnumerable<Pointstamp> InitialTimes { get; }
     }
 
@@ -597,8 +599,23 @@ namespace Microsoft.Research.Naiad.Dataflow
         public Type RecordType { get { return typeof(R); } }
 
         public bool Stateful { get { return false; } }
-        public void Checkpoint(NaiadWriter writer) { throw new NotImplementedException(); }
-        public void Restore(NaiadReader reader) { throw new NotImplementedException(); } 
+
+        public void CheckpointFull(NaiadWriter writer)
+        {
+//          writer.Write(CurrentEpoch, this.InternalComputation.SerializationFormat.GetSerializer<int>());
+//          writer.Write(completedCalled, this.InternalComputation.SerializationFormat.GetSerializer<bool>());
+          writer.Write(hasActivatedProgressTracker, this.InternalComputation.SerializationFormat.GetSerializer<bool>());
+        }
+
+        public void RestoreFull(NaiadReader reader)
+        {
+//          this.currentEpoch = reader.Read<int>(this.InternalComputation.SerializationFormat.GetSerializer<int>());
+//          this.completedCalled = reader.Read<bool>(this.InternalComputation.SerializationFormat.GetSerializer<bool>());
+          this.hasActivatedProgressTracker = reader.Read<bool>(this.InternalComputation.SerializationFormat.GetSerializer<bool>());
+        }
+
+        // public void CheckpointFull(NaiadWriter writer) { throw new NotImplementedException(); }
+        // public void RestoreFull(NaiadReader reader) { throw new NotImplementedException(); } 
 
         internal StreamingInputStage(DataSource<R, T> source, Placement placement, InternalComputation internalComputation, string inputName)
         {

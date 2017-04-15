@@ -198,9 +198,18 @@ namespace Microsoft.Research.Naiad.Scheduling
             public DrainItem(Pointstamp capability, LocalMailbox mailbox) { this.Capability = capability; this.Mailbox = mailbox; }
         }
 
+        private volatile CountdownEvent pauseWithoutRollbackEvent = null;
         private volatile CountdownEvent pauseEvent = null;
         private volatile CountdownEvent simulatedFailureEvent = null;
         private readonly AutoResetEvent resumeEvent = new AutoResetEvent(false);
+        private readonly AutoResetEvent resumeWithoutRollbackEvent = new AutoResetEvent(false);
+
+        internal void PauseWithoutRollback(CountdownEvent pauseWithoutRollbackEvent)
+        {
+          this.pauseWithoutRollbackEvent = pauseWithoutRollbackEvent;
+          this.Signal();
+        }
+
         internal void Pause(CountdownEvent pauseEvent)
         {
             this.pauseEvent = pauseEvent;
@@ -216,6 +225,11 @@ namespace Microsoft.Research.Naiad.Scheduling
         internal void Resume()
         {
             this.resumeEvent.Set();
+        }
+
+        internal void ResumeWithoutRollback()
+        {
+          this.resumeWithoutRollbackEvent.Set();
         }
 
         private readonly ConcurrentQueue<CheckpointPersistedAction> persistedCheckpointQueue = new ConcurrentQueue<CheckpointPersistedAction>();
@@ -534,6 +548,20 @@ namespace Microsoft.Research.Naiad.Scheduling
 
                 this.resumeEvent.WaitOne();
                 Logging.Info("Resumed worker {0}", this.Index);
+            }
+            if (this.pauseWithoutRollbackEvent != null)
+            {
+                Logging.Info("Starting to pause worker {0}", this.Index);
+                CountdownEvent signalEvent = this.pauseWithoutRollbackEvent;
+                this.pauseWithoutRollbackEvent = null;
+                signalEvent.Signal();
+                Logging.Info("Finished pausing worker {0}", this.Index);
+                this.resumeWithoutRollbackEvent.WaitOne();
+                Logging.Info("Resumed worker {0}", this.Index);
+                foreach (var computation in this.computationStates)
+                {
+                  computation.Producer.Start();
+                }
             }
 
             if (this.simulatedFailureEvent != null)
@@ -954,6 +982,7 @@ namespace Microsoft.Research.Naiad.Scheduling
             this.ev.Dispose();
             this.allChannelsInitializedEvent.Dispose();
             this.resumeEvent.Dispose();
+            this.resumeWithoutRollbackEvent.Dispose();
         }
     }
 

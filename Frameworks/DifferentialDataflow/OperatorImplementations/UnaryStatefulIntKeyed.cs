@@ -303,7 +303,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
 
         // keyIndices is spined list
 
-        protected override void Checkpoint(NaiadWriter writer)
+        public override void Checkpoint(NaiadWriter writer)
         {
             base.Checkpoint(writer);
             writer.Write(this.isShutdown);
@@ -332,7 +332,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
             }
         }
 
-        protected override void Restore(NaiadReader reader)
+        public override void Restore(NaiadReader reader)
         {
             base.Restore(reader);
             this.isShutdown = reader.Read<bool>();

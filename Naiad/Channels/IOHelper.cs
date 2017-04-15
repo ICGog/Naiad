@@ -843,6 +843,7 @@ namespace Microsoft.Research.Naiad.Serialization
         /// The message indicates that the workers have paused and the process is entering the rollback barrier
         /// </summary>
         WorkersPaused = 12,
+        StopCheckpoint = 13,
     }
 
     /// <summary>
@@ -934,6 +935,11 @@ namespace Microsoft.Research.Naiad.Serialization
         internal static MessageHeader AnnounceFailure(int processId, int delay)
         {
             return new MessageHeader(processId, -1, delay, -1, 0, SerializedMessageType.AnnounceFailure);
+        }
+
+        internal static MessageHeader StopCheckpoint
+        {
+          get { return new MessageHeader(-1, -1, -1, -1, 0, SerializedMessageType.StopCheckpoint); }
         }
 
         internal unsafe static int SizeOf

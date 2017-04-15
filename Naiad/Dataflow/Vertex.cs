@@ -58,7 +58,7 @@ namespace Microsoft.Research.Naiad.Dataflow
         protected internal int Entrancy { get { return this.entrancy; } set { this.entrancy = value; } }
         private int entrancy;
 
-        internal SerializationFormat SerializationFormat { get { return this.Stage.InternalComputation.SerializationFormat; } }
+        public SerializationFormat SerializationFormat { get { return this.Stage.InternalComputation.SerializationFormat; } }
 
         private readonly List<Action> OnFlushActions;
 
@@ -214,13 +214,13 @@ namespace Microsoft.Research.Naiad.Dataflow
         /// Writes the state of this vertex to the given writer.
         /// </summary>
         /// <param name="writer">The writer.</param>
-        protected abstract void Checkpoint(NaiadWriter writer);
+        public abstract void Checkpoint(NaiadWriter writer);
 
         /// <summary>
         /// Restores the state of this vertex from the given reader.
         /// </summary>
         /// <param name="reader">The reader.</param>
-        protected abstract void Restore(NaiadReader reader);
+        public abstract void Restore(NaiadReader reader);
 
         private readonly string MyName;
 
@@ -576,7 +576,7 @@ namespace Microsoft.Research.Naiad.Dataflow
         /// Writes the state of this vertex to the given writer.
         /// </summary>
         /// <param name="writer">The writer.</param>
-        protected override void Checkpoint(NaiadWriter writer)
+        public override void Checkpoint(NaiadWriter writer)
         {
             IList<Scheduler.WorkItem> workItems = this.Scheduler.GetWorkItemsForVertex(this);
             writer.Write(workItems.Count, this.SerializationFormat.GetSerializer<Int32>());
@@ -588,7 +588,7 @@ namespace Microsoft.Research.Naiad.Dataflow
         /// Restores the state of this vertex from the given reader.
         /// </summary>
         /// <param name="reader">The reader.</param>
-        protected override void Restore(NaiadReader reader)
+        public override void Restore(NaiadReader reader)
         {
             int workItemsCount = reader.Read<int>(this.SerializationFormat.GetSerializer<Int32>());
             for (int i = 0; i < workItemsCount; ++i)
@@ -649,7 +649,11 @@ namespace Microsoft.Research.Naiad.Dataflow
 
         internal bool MustStartFullCheckpoint(ICheckpoint<TTime> candidateIncrementalCheckpoint)
         {
-            return !this.NextCheckpointIsIncremental(candidateIncrementalCheckpoint);
+          bool full = !this.NextCheckpointIsIncremental(candidateIncrementalCheckpoint);
+          Console.WriteLine("MustStartFullCheckpoint {0}", full);
+          if (full)
+            Console.WriteLine("MustStartFullCheckpoint");
+          return full;
         }
 
         /// <summary>

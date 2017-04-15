@@ -31,7 +31,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.CollectionTra
     /// 
     /// The top bit is reserved for flagging merged state offsets.
     /// </summary>
-    internal struct OffsetLength : IEquatable<OffsetLength>
+    public struct OffsetLength : IEquatable<OffsetLength>
     {
         public int offsetLength;
         

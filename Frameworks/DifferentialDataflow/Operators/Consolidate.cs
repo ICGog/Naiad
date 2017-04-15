@@ -95,7 +95,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.Operators
          *     (T, Dictionary<S,int>)*accumulationsCount accumulations
          */
         
-        protected override void Checkpoint(NaiadWriter writer)
+        public override void Checkpoint(NaiadWriter writer)
         {
             base.Checkpoint(writer);
             //if (!this.terminated)
@@ -109,7 +109,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.Operators
             }
         }
 
-        protected override void Restore(NaiadReader reader)
+        public override void Restore(NaiadReader reader)
         {
             base.Restore(reader);
             //if (!this.terminated)
