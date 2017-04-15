@@ -20,6 +20,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading;
@@ -81,9 +82,17 @@ namespace Microsoft.Research.Naiad
         /// <param name="stream">input stream</param>
         /// <param name="action">callback</param>
         /// <returns>subscription for synchronization</returns>
-        public static Subscription Subscribe<R>(this Stream<R, Epoch> stream, Action<IEnumerable<R>> action)
+        public static Subscription Subscribe<R>(this Stream<R, Epoch> stream,
+                                                Action<IEnumerable<R>> action)
         {
             return new Subscription<R>(stream, new Placement.SingleVertex(0, 0), stream.ForStage.InternalComputation, (j, t, l) => action(l));
+        }
+
+        public static Subscription Subscribe<R>(this Stream<R, Epoch> stream,
+                                                System.Diagnostics.Stopwatch stopwatch,
+                                                Action<IEnumerable<R>> action)
+        {
+            return new Subscription<R>(stream, new Placement.SingleVertex(0, 0), stream.ForStage.InternalComputation, (j, t, l) => action(l), stopwatch);
         }
 
         /// <summary>
@@ -228,6 +237,15 @@ namespace Microsoft.Research.Naiad.Dataflow
         }
 
         internal Subscription(Stream<R, Epoch> input, Placement placement, InternalComputation computation, Action<int, int, IEnumerable<R>> action)
+        : this(input, placement, computation, action, Stopwatch.StartNew())
+        {
+        }
+
+        internal Subscription(Stream<R, Epoch> input,
+                              Placement placement,
+                              InternalComputation computation,
+                              Action<int, int, IEnumerable<R>> action,
+                              Stopwatch stopwatch)
         {
             foreach (var entry in placement)
                 if (entry.ProcessId == computation.Controller.Configuration.ProcessID)
@@ -323,6 +341,7 @@ namespace Microsoft.Research.Naiad.Dataflow
     {
         Action<int, int, IEnumerable<R>> Action;        // (vertexid, epoch, data) => ()
         Subscription<R> Parent;
+        Stopwatch stopwatch;
         private int epochsToRelease = -1;
         private readonly Dictionary<Epoch, R[]> cachedOutputs;
 
@@ -378,6 +397,8 @@ namespace Microsoft.Research.Naiad.Dataflow
                     }
                     else
                     {
+                        Console.WriteLine("{0} Caching output {1}",
+                                          stopwatch.ElapsedMilliseconds, time);
                         this.cachedOutputs.Add(time, Input.GetRecordsAt(time).ToArray());
                     }
                 }
@@ -408,6 +429,8 @@ namespace Microsoft.Research.Naiad.Dataflow
 
             foreach (var time in timesToRelease)
             {
+                Console.WriteLine("{0} Caching output remove {1}",
+                                  stopwatch.ElapsedMilliseconds, time.Key);
                 this.cachedOutputs.Remove(time.Key);
                 this.Action(this.VertexId, time.Key.epoch, time.Value);
                 this.Parent.Signal(time.Key);
@@ -444,8 +467,23 @@ namespace Microsoft.Research.Naiad.Dataflow
             this.PushEventTime(eventTime);
             this.NotifyAt(eventTime);
             this.PopEventTime();
-
+            this.stopwatch = Stopwatch.StartNew();
             this.cachedOutputs = new Dictionary<Epoch, R[]>();
         }
+
+        public SubscribeBufferingVertex(Stopwatch stopwatch, int index, Stage<Epoch> stage, Subscription<R> parent, Action<int, int, IEnumerable<R>> action)
+            : base(index, stage, null)
+        {
+            this.Parent = parent;
+            this.Action = action;
+            this.Input = new VertexInputBuffer<R, Epoch>(this);
+            Epoch eventTime = new Epoch(0);
+            this.PushEventTime(eventTime);
+            this.NotifyAt(eventTime);
+            this.PopEventTime();
+            this.stopwatch = stopwatch;
+            this.cachedOutputs = new Dictionary<Epoch, R[]>();
+        }
+
     }
 }

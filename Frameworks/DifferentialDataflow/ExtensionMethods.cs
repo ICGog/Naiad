@@ -393,6 +393,14 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow
             return input.Output.Subscribe(x => action(x.ToArray()));
         }
 
+        public static Microsoft.Research.Naiad.Subscription Subscribe<TRecord>(this Collection<TRecord, Epoch> input,
+                                                                               System.Diagnostics.Stopwatch stopwatch,
+                                                                               Action<Weighted<TRecord>[]> action)
+            where TRecord : IEquatable<TRecord>
+        {
+            return input.Output.Subscribe(stopwatch, x => action(x.ToArray()));
+        }
+
         /// <summary>
         /// Converts a stream of weighted records to a differential dataflow <see cref="Collection{TRecord,TTime}"/>.
         /// </summary>

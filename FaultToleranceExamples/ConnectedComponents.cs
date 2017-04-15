@@ -34,6 +34,7 @@ using Microsoft.Research.Naiad.Runtime.FaultTolerance;
 using Microsoft.Research.Naiad.FaultToleranceManager;
 using Microsoft.Research.Naiad.Frameworks.DifferentialDataflow;
 using Microsoft.Research.Naiad.Serialization;
+using Microsoft.Research.Naiad.Diagnostics;
 
 namespace FaultToleranceExamples.ConnectedComponents
 {
@@ -216,6 +217,7 @@ namespace FaultToleranceExamples.ConnectedComponents
                                               !nonIncrementalFTManager);
             using (var computation = NewComputation.FromConfig(this.config))
             {
+//                computation.OnStageStable += this.ReactToStable;
                 if (!checkpointEagerly)
                 {
                   computation.WithCheckpointPolicy(v => new CheckpointAtBatch<BatchIn<Epoch>>(checkpointTimeLength));
@@ -233,7 +235,6 @@ namespace FaultToleranceExamples.ConnectedComponents
 
                 // set up the CC computation
                 var edges = computation.NewInputCollection<IntPair>();
-
                 if (!checkpointEagerly)
                 {
                   edges.SetCheckpointType(CheckpointType.Stateless);
@@ -260,7 +261,7 @@ namespace FaultToleranceExamples.ConnectedComponents
                   cc.SetCheckpointType(CheckpointType.Stateless).SetCheckpointPolicy(s => new CheckpointEagerly());
                 }
 
-                var output = cc.Subscribe(l =>
+                var output = cc.Subscribe(stopwatch, l =>
                     {
                       Console.Error.WriteLine("Time to process: {0}", stopwatch.Elapsed);
                       foreach (var result in l.OrderBy(x => x.record))
@@ -305,6 +306,14 @@ namespace FaultToleranceExamples.ConnectedComponents
                           output.Sync(curEpoch - 1);
                         }
                         edges.OnNext(changes);
+//           computation.StopTheWorld();
+//           Console.WriteLine("StoppedTheWorld");
+// //          Thread.Sleep(2000);
+//           computation.CheckpointAll("/tmp/falkirk/mymy", curEpoch);
+//           computation.ResumeTheWorld();
+//           Console.WriteLine("ResumedTheWorld");
+
+//                        manager.StopComputation(curEpoch);
                     }
                     output.Sync(numEpochsToRun);
                     Console.WriteLine("Total time {0}", stopwatch.ElapsedMilliseconds);
