@@ -2038,8 +2038,7 @@ namespace FaultToleranceExamples.ComplexFTWorkflow
             }
 
             System.IO.Directory.CreateDirectory(logPrefix);
-            if (!stopTheWorldFT)
-              this.config.LogStreamFactory = (s => new FileLogStream(logPrefix, s));
+            this.config.LogStreamFactory = (s => new FileLogStream(logPrefix, s));
 
             SerializationFormat serFormat =
               SerializationFactory.GetCodeGeneratorForVersion(this.config.SerializerVersion.First,
@@ -2073,7 +2072,8 @@ namespace FaultToleranceExamples.ComplexFTWorkflow
             else
             {
                 System.IO.Directory.CreateDirectory(Path.Combine(logPrefix, "checkpoint"));
-                this.config.CheckpointingFactory = s => new FileStreamSequence(Path.Combine(logPrefix, "checkpoint"), s);
+                if (!stopTheWorldFT)
+                  this.config.CheckpointingFactory = s => new FileStreamSequence(Path.Combine(logPrefix, "checkpoint"), s);
             }
 
             using (var computation = NewComputation.FromConfig(this.config))
@@ -2113,7 +2113,7 @@ namespace FaultToleranceExamples.ComplexFTWorkflow
                 {
                   if (stopTheWorldFT)
                   {
-                    this.stopTheWorldThread = new Thread(() => this.StopTheWorld(logPrefix, stopTheWorldFrequencyMs));
+                    this.stopTheWorldThread = new Thread(() => this.StopTheWorld(logPrefix + "/checkpoint", stopTheWorldFrequencyMs));
                     this.stopTheWorldThread.Start();
                   }
                   else
