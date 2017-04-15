@@ -52,6 +52,10 @@ namespace Microsoft.Research.Naiad.Dataflow
     /// <seealso cref="Vertex{TTime}"/>
     public abstract class Vertex
     {
+
+        public Pointstamp lastCompletedStamp;
+        public bool lastCompletedInitialized;
+
         /// <summary>
         /// Indicates number of additional times the vertex may be entered
         /// </summary>
@@ -110,6 +114,24 @@ namespace Microsoft.Research.Naiad.Dataflow
                 listener.UpdateReachability(pointstamps);
             }
 
+            if (pointstamps != null)
+            {
+              Pointstamp minReachablePointstamp = new Pointstamp();
+              for (int i = 0; i < pointstamps.Count; i++)
+              {
+                if (i == 0 || FTFrontier.IsLessThanOrEqualTo(pointstamps[i], minReachablePointstamp))
+                {
+                  minReachablePointstamp = pointstamps[i];
+                }
+              }
+                Console.WriteLine("What {0} {1}", Stage.StageId, minReachablePointstamp);
+              if (!lastCompletedInitialized ||
+                  FTFrontier.IsLessThanOrEqualTo(lastCompletedStamp, minReachablePointstamp))
+              {
+                  lastCompletedInitialized = true;
+                  lastCompletedStamp = minReachablePointstamp;
+              }
+            }
             this.ConsiderCheckpointing(pointstamps);
 
             if (pointstamps == null && !isShutdown)
@@ -240,6 +262,7 @@ namespace Microsoft.Research.Naiad.Dataflow
         /// <param name="stage">Stage the vertex belongs to</param>
         internal Vertex(int index, Stage stage)
         {
+            this.lastCompletedInitialized = false;
             this.VertexId = index;
 
             this.Scheduler = stage.InternalComputation.Controller.Workers[stage.Placement[this.VertexId].ThreadId];
@@ -578,6 +601,10 @@ namespace Microsoft.Research.Naiad.Dataflow
         /// <param name="writer">The writer.</param>
         public override void Checkpoint(NaiadWriter writer)
         {
+            writer.Write(this.lastCompletedInitialized,
+                         this.SerializationFormat.GetSerializer<bool>());
+            writer.Write(this.lastCompletedStamp,
+                         this.SerializationFormat.GetSerializer<Pointstamp>());
             IList<Scheduler.WorkItem> workItems = this.Scheduler.GetWorkItemsForVertex(this);
             writer.Write(workItems.Count, this.SerializationFormat.GetSerializer<Int32>());
             foreach (Scheduler.WorkItem workItem in workItems)
@@ -590,6 +617,10 @@ namespace Microsoft.Research.Naiad.Dataflow
         /// <param name="reader">The reader.</param>
         public override void Restore(NaiadReader reader)
         {
+            this.lastCompletedInitialized =
+              reader.Read<bool>(this.SerializationFormat.GetSerializer<bool>());
+            this.lastCompletedStamp =
+              reader.Read<Pointstamp>(this.SerializationFormat.GetSerializer<Pointstamp>());
             int workItemsCount = reader.Read<int>(this.SerializationFormat.GetSerializer<Int32>());
             for (int i = 0; i < workItemsCount; ++i)
             {

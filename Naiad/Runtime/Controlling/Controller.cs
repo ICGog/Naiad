@@ -605,7 +605,7 @@ namespace Microsoft.Research.Naiad
         public void Checkpoint(string path, int epoch, int computationIndex)
         {
             Stopwatch checkpointWatch = Stopwatch.StartNew();
-
+            HashSet<int> stagesWithNewFrontiers = new HashSet<int>();
             SerializationFormat serFormat =
               SerializationFactory.GetCodeGeneratorForVersion(this.configuration.SerializerVersion.First,
                                                               this.configuration.SerializerVersion.Second);
@@ -626,12 +626,31 @@ namespace Microsoft.Research.Naiad
                   using (NaiadWriter vertexWriter = new NaiadWriter(vertexFile, serFormat))
                 {
                     vertex.Checkpoint(vertexWriter);
+                    if (!vertex.lastCompletedInitialized)
+                      continue;
+                    Pointstamp curMinPointstamp;
+                    if (stageFrontier.TryGetValue(vertex.Stage.StageId, out curMinPointstamp))
+                    {
+                      if (FTFrontier.IsLessThanOrEqualTo(curMinPointstamp, vertex.lastCompletedStamp))
+                      {
+                        stageFrontier[vertex.Stage.StageId] = vertex.lastCompletedStamp;
+                        stagesWithNewFrontiers.Add(vertex.Stage.StageId);
+                      }
+                    }
+                    else
+                    {
+                      stageFrontier.Add(vertex.Stage.StageId, vertex.lastCompletedStamp);
+                      stagesWithNewFrontiers.Add(vertex.Stage.StageId);
+                    }
 //                    Console.Error.WriteLine("Wrote {0}: {1} objects", vertex.ToString(), vertexWriter.objectsWritten);
                 }
             }
-
             Console.Error.WriteLine("!! Total checkpoint took time = {0}", checkpointWatch.Elapsed);
-
+            foreach (var stageId in stagesWithNewFrontiers)
+            {
+              this.baseComputations[computationIndex].NotifyStageStable(stageId,
+                                                                        new Pointstamp[] { stageFrontier[stageId]});
+            }
         }
 
         public void Restore(string path, int epoch, int computationIndex)
@@ -1065,6 +1084,9 @@ namespace Microsoft.Research.Naiad
 
         private bool activated;
 
+        Dictionary<int, Pointstamp> stageFrontier;
+
+
         /// <summary>
         /// Constructs a controller for a new computation.
         /// </summary>
@@ -1074,7 +1096,7 @@ namespace Microsoft.Research.Naiad
             this.activated = false;
             this.configuration = config;
             this.HasFailed = false;
-
+            this.stageFrontier = new Dictionary<int, Pointstamp>();
             this.SerializationFormat = SerializationFactory.GetCodeGeneratorForVersion(config.SerializerVersion.First, config.SerializerVersion.Second);
 
             // set up an initial endpoint to try starting the server listening on. If endpoint is null

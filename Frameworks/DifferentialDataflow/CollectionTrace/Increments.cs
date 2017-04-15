@@ -42,7 +42,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.CollectionTra
         public CollectionTraceWithHeapIncrement(int t) { OffsetLength = new OffsetLength(); TimeIndex = t; }
     }
 
-    internal struct CollectionTraceWithAggregationIncrement<S> : IEquatable<CollectionTraceWithAggregationIncrement<S>>
+    public struct CollectionTraceWithAggregationIncrement<S> : IEquatable<CollectionTraceWithAggregationIncrement<S>>
         where S : IEquatable<S>
     {
         public Int64 Weight;
@@ -67,7 +67,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.CollectionTra
         public CollectionTraceWithAggregationIncrement(int t) { Weight = 0; TimeIndex = t; Value = default(S); }
     }
 
-    internal struct CollectionTraceWithoutHeapIncrement : IEquatable<CollectionTraceWithoutHeapIncrement>
+    public struct CollectionTraceWithoutHeapIncrement : IEquatable<CollectionTraceWithoutHeapIncrement>
     {
         public Int64 Weight;
         public int TimeIndex;

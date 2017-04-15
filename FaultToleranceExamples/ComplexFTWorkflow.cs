@@ -1856,6 +1856,19 @@ namespace FaultToleranceExamples.ComplexFTWorkflow
             }
         }
 
+        private Thread stopTheWorldThread;
+
+        private void StopTheWorld(string logPrefix, int checkpointFrequencyMs)
+        {
+          for (int curCheckpoint = 0; ; curCheckpoint++)
+          {
+            Thread.Sleep(checkpointFrequencyMs);
+            computation.StopTheWorld();
+            computation.CheckpointAll(logPrefix, curCheckpoint);
+            computation.ResumeTheWorld();
+          }
+        }
+
         public void Execute(string[] args)
         {
             //Logging.LogLevel = LoggingLevel.Info;
@@ -1863,6 +1876,7 @@ namespace FaultToleranceExamples.ComplexFTWorkflow
             this.config.MaxLatticeInternStaleTimes = 10;
             this.config.DefaultCheckpointInterval = 1000;
 
+            bool noFailures = false;
             bool useAzure = false;
             bool useHdfs = false;
             string hdfsNameNode = "";
@@ -1873,6 +1887,8 @@ namespace FaultToleranceExamples.ComplexFTWorkflow
             int failureIntervalSecs = 15;
             int i = 1;
             bool nonIncrementalFTManager = false;
+            bool stopTheWorldFT = false;
+            int stopTheWorldFrequencyMs = 10000;
             while (i < args.Length)
             {
                 switch (args[i].ToLower())
@@ -1994,7 +2010,18 @@ namespace FaultToleranceExamples.ComplexFTWorkflow
                         logPrefix = args[i + 1];
                         i += 2;
                         break;
-
+                    case "-nofailures":
+                        noFailures = true;
+                        i += 1;
+                        break;
+                    case "-stoptheworldft":
+                        stopTheWorldFT = true;
+                        i += 1;
+                        break;
+                    case "-stoptheworldfrequency":
+                        stopTheWorldFrequencyMs = Int32.Parse(args[i + 1]);
+                        i += 2;
+                        break;
                     default:
                         throw new ApplicationException("Unknown argument " + args[i]);
                 }
@@ -2011,7 +2038,8 @@ namespace FaultToleranceExamples.ComplexFTWorkflow
             }
 
             System.IO.Directory.CreateDirectory(logPrefix);
-            this.config.LogStreamFactory = (s => new FileLogStream(logPrefix, s));
+            if (!stopTheWorldFT)
+              this.config.LogStreamFactory = (s => new FileLogStream(logPrefix, s));
 
             SerializationFormat serFormat =
               SerializationFactory.GetCodeGeneratorForVersion(this.config.SerializerVersion.First,
@@ -2083,10 +2111,18 @@ namespace FaultToleranceExamples.ComplexFTWorkflow
 
                 if (this.config.ProcessID == 0)
                 {
+                  if (stopTheWorldFT)
+                  {
+                    this.stopTheWorldThread = new Thread(() => this.StopTheWorld(logPrefix, stopTheWorldFrequencyMs));
+                    this.stopTheWorldThread.Start();
+                  }
+                  else
+                  {
                     manager.Initialize(
                         computation,
                         this.slow.ToMonitor.Concat(this.cc.ToMonitor.Concat(this.perfect.ToMonitor)).Distinct(),
                         managerWorkerCount, minimalLogging);
+                  }
                 }
 
                 //computation.OnStageStable += (x, y) => { Console.WriteLine(y.stageId + " " + y.frontier[0]); };
@@ -2127,8 +2163,10 @@ namespace FaultToleranceExamples.ComplexFTWorkflow
                     IEnumerable<int> failFast = Enumerable.Range(fpBase, fpRange)
                         .Except(failSlow.Concat(failMedium));
 
-                    while (true)
+                    if (!noFailures)
                     {
+                      while (true)
+                      {
                         Random random = new Random();
                         //System.Threading.Thread.Sleep(Timeout.Infinite);
                         System.Threading.Thread.Sleep(failureIntervalSecs * 1000);
@@ -2144,8 +2182,8 @@ namespace FaultToleranceExamples.ComplexFTWorkflow
                             }
                             manager.FailProcess(processes);
                         }
-
                         manager.PerformRollback(failSlow, failMedium, failFast);
+                      }
                     }
                 }
 
