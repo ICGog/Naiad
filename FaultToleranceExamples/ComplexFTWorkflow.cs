@@ -22,6 +22,7 @@ using System.IO;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
+using System.Net;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -1697,7 +1698,6 @@ namespace FaultToleranceExamples.ComplexFTWorkflow
         private void ReactToStable(object o, StageStableEventArgs args)
         {
             Pointstamp stamp = args.frontier[0];
-            Console.WriteLine("Stage {0} stable at {1}", args.stageId, stamp);
             if (args.stageId == this.perfect.slowStage)
             {
                 Epoch slowTime = new Epoch(stamp.Timestamp.a);
@@ -1857,28 +1857,74 @@ namespace FaultToleranceExamples.ComplexFTWorkflow
             }
         }
 
+        private Dictionary<int, Pointstamp> stableStages;
         private Thread stopTheWorldThread;
 
         private void StopTheWorld(string logPrefix, int checkpointFrequencyMs)
         {
           Console.WriteLine("Started StopTheWorld thread");
 
+          Configuration stageConfig = new Configuration();
+          stageConfig.WorkerCount = 1;
+          if (this.config.ProcessID == fpBase)
+          {
+            stageConfig.ProcessID = 0;
+          } else if (this.config.ProcessID == 0)
+          {
+            stageConfig.ProcessID = fpBase;
+          } else
+          {
+            stageConfig.ProcessID = this.config.ProcessID;
+          }
 
-          Configuration config = new Configuration();
-          config.WorkerCount = 1;
-          using (Computation stableStageComputation = NewComputation.FromConfig(config))
+          IPEndPoint[] endpoints = new System.Net.IPEndPoint[this.config.Endpoints.Length];
+          int index = 0;
+          foreach (var endpoint in config.Endpoints)
+          {
+            if (index == 0)
+            {
+              endpoints[fpBase] = new System.Net.IPEndPoint(endpoint.Address, 5555);
+            } else if (index == fpBase)
+            {
+              endpoints[0] = new System.Net.IPEndPoint(endpoint.Address, 5555);
+            } else
+            {
+              endpoints[index] = new System.Net.IPEndPoint(endpoint.Address, 5555);
+            }
+            index++;
+          }
+          stageConfig.Endpoints = endpoints;
+          using (Computation stableStageComputation = NewComputation.FromConfig(stageConfig))
           {
             var stagePointstampStream = stableStageComputation.NewInput(computation.StagePointstamps);
             stagePointstampStream
-              .Min2(stagePointstamp => stagePointstamp.First,
-                    stagePointstamp => stagePointstamp.Second)
+              .Min(stagePointstamp => stagePointstamp.First,
+                   stagePointstamp => stagePointstamp.Second)
               .Subscribe(stagePointstamps =>
                   {
                     foreach (var stagePointstamp in stagePointstamps)
                     {
-                      Console.WriteLine("Current stable {0} {1}",
-                                        stagePointstamp.First,
-                                        stagePointstamp.Second);
+                      Pointstamp curMinPointstamp;
+                      if (stableStages.TryGetValue(stagePointstamp.First, out curMinPointstamp))
+                      {
+                        if (curMinPointstamp.CompareTo(stagePointstamp.Second) < 0)
+                        {
+                          stableStages[stagePointstamp.First] = stagePointstamp.Second;
+                          ReactToStable(computation,
+                                        new StageStableEventArgs(stagePointstamp.First,
+                                                                 new Pointstamp[] { stagePointstamp.Second }));
+                        }
+                      }
+                      else
+                      {
+                        if (stagePointstamp.Second.Timestamp.Length > 0)
+                        {
+                          stableStages.Add(stagePointstamp.First, stagePointstamp.Second);
+                          ReactToStable(computation,
+                                        new StageStableEventArgs(stagePointstamp.First,
+                                                                 new Pointstamp[] { stagePointstamp.Second }));
+                        }
+                      }
                     }
                   });
             stableStageComputation.Activate();
@@ -2140,6 +2186,7 @@ namespace FaultToleranceExamples.ComplexFTWorkflow
 
                 if (stopTheWorldFT)
                 {
+                  this.stableStages = new Dictionary<int, Pointstamp>();
                   this.stopTheWorldThread = new Thread(() => this.StopTheWorld(logPrefix + "/checkpoint", stopTheWorldFrequencyMs));
                   this.stopTheWorldThread.Start();
                 }
