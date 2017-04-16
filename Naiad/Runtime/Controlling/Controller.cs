@@ -660,25 +660,30 @@ namespace Microsoft.Research.Naiad
                   using (NaiadWriter vertexWriter = new NaiadWriter(vertexFile, serFormat))
                 {
                     vertex.Checkpoint(vertexWriter);
-                    if (!vertex.lastCompletedInitialized)
-                      continue;
-                    Pointstamp curMinPointstamp;
-                    if (stageFrontier.TryGetValue(vertex.Stage.StageId, out curMinPointstamp))
-                    {
-                      if (FTFrontier.IsLessThanOrEqualTo(curMinPointstamp, vertex.lastCompletedStamp))
-                      {
-                        stageFrontier[vertex.Stage.StageId] = vertex.lastCompletedStamp;
-                        stagesWithNewFrontiers.Add(vertex.Stage.StageId);
-                      }
-                    }
-                    else
-                    {
-                      stageFrontier.Add(vertex.Stage.StageId, vertex.lastCompletedStamp);
-                      stagesWithNewFrontiers.Add(vertex.Stage.StageId);
-                    }
 //                    Console.Error.WriteLine("Wrote {0}: {1} objects", vertex.ToString(), vertexWriter.objectsWritten);
                 }
             }
+
+            foreach (Vertex vertex in this.baseComputations[computationIndex].Stages.Select(x => x.Value).SelectMany(x => x.Vertices))
+            {
+              if (!vertex.lastCompletedInitialized)
+                continue;
+              Pointstamp curMinPointstamp;
+              if (stageFrontier.TryGetValue(vertex.Stage.StageId, out curMinPointstamp))
+              {
+                if (FTFrontier.IsLessThanOrEqualTo(curMinPointstamp, vertex.lastCompletedStamp))
+                {
+                  stageFrontier[vertex.Stage.StageId] = vertex.lastCompletedStamp;
+                  stagesWithNewFrontiers.Add(vertex.Stage.StageId);
+                }
+              }
+              else
+              {
+                stageFrontier.Add(vertex.Stage.StageId, vertex.lastCompletedStamp);
+                stagesWithNewFrontiers.Add(vertex.Stage.StageId);
+              }
+            }
+
             Console.Error.WriteLine("!! Total checkpoint took time = {0}", checkpointWatch.Elapsed);
 
             foreach (var stageId in stagesWithNewFrontiers)

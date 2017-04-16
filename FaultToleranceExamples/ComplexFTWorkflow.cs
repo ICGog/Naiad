@@ -2149,6 +2149,12 @@ namespace FaultToleranceExamples.ComplexFTWorkflow
                     //    Console.Out.Flush();
                     //    previousFrontier = newSet;
                     //};
+                  Console.WriteLine("Stages interested in {0} {1} {2} {3} {4}",
+                                    this.perfect.slowStage,
+                                    this.perfect.ccStage,
+                                    this.perfect.resultStage,
+                                    this.cc.reduceStage,
+                                    this.slow.reduceStage);
                     computation.OnStageStable += this.ReactToStable;
                     this.StartBatches();
                 }
