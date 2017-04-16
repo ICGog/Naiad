@@ -639,7 +639,6 @@ namespace Microsoft.Research.Naiad
         public void Checkpoint(string path, int epoch, int computationIndex)
         {
             Stopwatch checkpointWatch = Stopwatch.StartNew();
-            HashSet<int> stagesWithNewFrontiers = new HashSet<int>();
             SerializationFormat serFormat =
               SerializationFactory.GetCodeGeneratorForVersion(this.configuration.SerializerVersion.First,
                                                               this.configuration.SerializerVersion.Second);
@@ -664,39 +663,22 @@ namespace Microsoft.Research.Naiad
                 }
             }
 
+            List<Pair<int, Pointstamp>> stagePointstamp = new List<Pair<int, Pointstamp>>();
+
             foreach (Vertex vertex in this.baseComputations[computationIndex].Stages.Select(x => x.Value).SelectMany(x => x.Vertices))
             {
-              if (!vertex.lastCompletedInitialized)
-                continue;
-              Pointstamp curMinPointstamp;
-              if (stageFrontier.TryGetValue(vertex.Stage.StageId, out curMinPointstamp))
-              {
-                if (FTFrontier.IsLessThanOrEqualTo(curMinPointstamp, vertex.lastCompletedStamp))
-                {
-                  stageFrontier[vertex.Stage.StageId] = vertex.lastCompletedStamp;
-                  stagesWithNewFrontiers.Add(vertex.Stage.StageId);
-                }
-              }
-              else
-              {
-                stageFrontier.Add(vertex.Stage.StageId, vertex.lastCompletedStamp);
-                stagesWithNewFrontiers.Add(vertex.Stage.StageId);
-              }
+              stagePointstamp.Add(vertex.Stage.StageId.PairWith(vertex.lastCompletedStamp));
             }
 
             Console.Error.WriteLine("!! Total checkpoint took time = {0}", checkpointWatch.Elapsed);
 
-            foreach (var stageId in stagesWithNewFrontiers)
+            baseComputations[computationIndex].stagePointstamps.OnNext(stagePointstamp);
+
+            if (this.networkChannel != null && this.networkChannel is Snapshottable)
             {
-              Console.WriteLine("New Frontiers {0} {1}", stageId, stageFrontier[stageId]);
-              this.baseComputations[computationIndex].NotifyStageStable(stageId,
-                                                                        new Pointstamp[] { stageFrontier[stageId]});
+              ((Snapshottable)this.networkChannel).AnnounceStopCheckpoint();
+              ((Snapshottable)this.networkChannel).WaitForAllStopCheckpointMessages();
             }
-          if (this.networkChannel != null && this.networkChannel is Snapshottable)
-          {
-            ((Snapshottable)this.networkChannel).AnnounceStopCheckpoint();
-            ((Snapshottable)this.networkChannel).WaitForAllStopCheckpointMessages();
-          }
         }
 
         public void Restore(string path, int epoch, int computationIndex)
@@ -1132,9 +1114,6 @@ namespace Microsoft.Research.Naiad
 
         private bool activated;
 
-        Dictionary<int, Pointstamp> stageFrontier;
-
-
         /// <summary>
         /// Constructs a controller for a new computation.
         /// </summary>
@@ -1144,7 +1123,6 @@ namespace Microsoft.Research.Naiad
             this.activated = false;
             this.configuration = config;
             this.HasFailed = false;
-            this.stageFrontier = new Dictionary<int, Pointstamp>();
             this.SerializationFormat = SerializationFactory.GetCodeGeneratorForVersion(config.SerializerVersion.First, config.SerializerVersion.Second);
 
             // set up an initial endpoint to try starting the server listening on. If endpoint is null

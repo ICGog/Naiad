@@ -57,7 +57,7 @@ namespace Microsoft.Research.Naiad.Runtime.Progress
     /// for use in progress tracking.
     /// </summary>
     /// <seealso cref="Computation.OnFrontierChange"/>
-    public struct Pointstamp : IEquatable<Pointstamp>
+    public struct Pointstamp : IEquatable<Pointstamp>, IComparable<Pointstamp>
     {
         /// <summary>
         /// A fake array implementation to avoid heap allocation
@@ -203,6 +203,32 @@ namespace Microsoft.Research.Naiad.Runtime.Progress
                     return false;
 
             return true;
+        }
+
+        public int CompareTo(Pointstamp other)
+        {
+          if (this.Timestamp.Length < other.Timestamp.Length)
+          {
+            return -1;
+          }
+          else if (this.Timestamp.Length > other.Timestamp.Length)
+          {
+            return 1;
+          }
+          else
+          {
+            for (int i = 0; i < this.Timestamp.Length; i++)
+            {
+              if (this.Timestamp[i] < other.Timestamp[i])
+              {
+                return -1;
+              } else if (this.Timestamp[i] > other.Timestamp[i])
+              {
+                return 1;
+              }
+            }
+            return 0;
+          }
         }
 
         /// <summary>

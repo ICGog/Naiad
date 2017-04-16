@@ -1862,16 +1862,38 @@ namespace FaultToleranceExamples.ComplexFTWorkflow
         private void StopTheWorld(string logPrefix, int checkpointFrequencyMs)
         {
           Console.WriteLine("Started StopTheWorld thread");
-          int curCheckpoint = 0;
-          while (true)
+
+
+          Configuration config = new Configuration();
+          config.WorkerCount = 1;
+          using (Computation stableStageComputation = NewComputation.FromConfig(config))
           {
-            Thread.Sleep(checkpointFrequencyMs);
-            Console.WriteLine("StopTheWorld");
-            computation.StopTheWorld();
-            computation.CheckpointAll(logPrefix, curCheckpoint);
-            Console.WriteLine("ResumeTheWorld");
-            computation.ResumeTheWorld();
-            curCheckpoint++;
+            var stagePointstampStream = stableStageComputation.NewInput(computation.StagePointstamps);
+            stagePointstampStream
+              .Min2(stagePointstamp => stagePointstamp.First,
+                    stagePointstamp => stagePointstamp.Second)
+              .Subscribe(stagePointstamps =>
+                  {
+                    foreach (var stagePointstamp in stagePointstamps)
+                    {
+                      Console.WriteLine("Current stable {0} {1}",
+                                        stagePointstamp.First,
+                                        stagePointstamp.Second);
+                    }
+                  });
+
+            int curCheckpoint = 0;
+            while (true)
+            {
+              Thread.Sleep(checkpointFrequencyMs);
+              Console.WriteLine("StopTheWorld");
+              computation.StopTheWorld();
+              computation.CheckpointAll(logPrefix, curCheckpoint);
+              Console.WriteLine("ResumeTheWorld");
+              computation.ResumeTheWorld();
+              curCheckpoint++;
+            }
+            stableStageComputation.Join();
           }
         }
 

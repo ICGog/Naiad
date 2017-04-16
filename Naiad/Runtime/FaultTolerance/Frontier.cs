@@ -539,6 +539,11 @@ namespace Microsoft.Research.Naiad.Runtime.FaultTolerance
         /// <returns>true iff the first pointstamp is less than or equal to the second pointstamp</returns>
         public static bool IsLessThanOrEqualTo(Pointstamp a, Pointstamp b)
         {
+            // Uninitialized pointstamp.
+            if (a.Timestamp.Length == 0)
+              return true;
+            if (b.Timestamp.Length == 0)
+              return false;
             if (a.Timestamp.Length != b.Timestamp.Length)
                 Console.WriteLine("should have same length!");
 

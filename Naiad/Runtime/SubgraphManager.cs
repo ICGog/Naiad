@@ -208,6 +208,11 @@ namespace Microsoft.Research.Naiad
         {
             get { return this.controller; }
         }
+
+        public BatchedDataSource<Pair<int, Pointstamp>> StagePointstamps
+        {
+          get { return this.computation.StagePointstamps; }
+        }
     }
 
     /// <summary>
@@ -479,6 +484,10 @@ namespace Microsoft.Research.Naiad
         /// The <see cref="Controller"/> that hosts this graph.
         /// </summary>
         Controller Controller { get; }
+
+        BatchedDataSource<Pair<int, Pointstamp>> StagePointstamps { get; }
+
+
     }
 
     /// <summary>
@@ -546,6 +555,8 @@ namespace Microsoft.Research.Naiad
         public long TicksSinceStartup { get { return this.controller.TicksSinceStartup; } }
 
         public SerializationFormat SerializationFormat { get { return this.Controller.SerializationFormat; } }
+
+        public BatchedDataSource<Pair<int, Pointstamp>> stagePointstamps;
 
         public Computation ExternalComputation { get { return this; } }
 
@@ -922,12 +933,17 @@ namespace Microsoft.Research.Naiad
 
         public StreamContext Context { get { return new StreamContext(this); } }
 
+        public BatchedDataSource<Pair<int, Pointstamp>> StagePointstamps
+        {
+          get { return this.stagePointstamps; }
+        }
+
         public BaseComputation(InternalController controller, int index)
         {
             this.controller = controller;
             this.defaultPlacement = this.controller.DefaultPlacement;
             this.index = index;
-
+            this.stagePointstamps = new BatchedDataSource<Pair<int, Pointstamp>>();
             this.ShutdownCounter = new CountdownEvent(controller.Workers.Count);
 
             if (this.controller.Configuration.DistributedProgressTracker)

@@ -54,7 +54,6 @@ namespace Microsoft.Research.Naiad.Dataflow
     {
 
         public Pointstamp lastCompletedStamp;
-        public bool lastCompletedInitialized;
 
         /// <summary>
         /// Indicates number of additional times the vertex may be entered
@@ -124,10 +123,8 @@ namespace Microsoft.Research.Naiad.Dataflow
                   minReachablePointstamp = pointstamps[i];
                 }
               }
-              if (!lastCompletedInitialized ||
-                  FTFrontier.IsLessThanOrEqualTo(lastCompletedStamp, minReachablePointstamp))
+              if (FTFrontier.IsLessThanOrEqualTo(lastCompletedStamp, minReachablePointstamp))
               {
-                  lastCompletedInitialized = true;
                   lastCompletedStamp = minReachablePointstamp;
               }
             }
@@ -261,7 +258,7 @@ namespace Microsoft.Research.Naiad.Dataflow
         /// <param name="stage">Stage the vertex belongs to</param>
         internal Vertex(int index, Stage stage)
         {
-            this.lastCompletedInitialized = false;
+            this.lastCompletedStamp = new Pointstamp();
             this.VertexId = index;
 
             this.Scheduler = stage.InternalComputation.Controller.Workers[stage.Placement[this.VertexId].ThreadId];
@@ -600,8 +597,6 @@ namespace Microsoft.Research.Naiad.Dataflow
         /// <param name="writer">The writer.</param>
         public override void Checkpoint(NaiadWriter writer)
         {
-            writer.Write(this.lastCompletedInitialized,
-                         this.SerializationFormat.GetSerializer<bool>());
             writer.Write(this.lastCompletedStamp,
                          this.SerializationFormat.GetSerializer<Pointstamp>());
             IList<Scheduler.WorkItem> workItems = this.Scheduler.GetWorkItemsForVertex(this);
@@ -616,8 +611,6 @@ namespace Microsoft.Research.Naiad.Dataflow
         /// <param name="reader">The reader.</param>
         public override void Restore(NaiadReader reader)
         {
-            this.lastCompletedInitialized =
-              reader.Read<bool>(this.SerializationFormat.GetSerializer<bool>());
             this.lastCompletedStamp =
               reader.Read<Pointstamp>(this.SerializationFormat.GetSerializer<Pointstamp>());
             int workItemsCount = reader.Read<int>(this.SerializationFormat.GetSerializer<Int32>());
