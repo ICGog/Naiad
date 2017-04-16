@@ -710,10 +710,18 @@ namespace Microsoft.Research.Naiad
 //                    Console.Error.WriteLine("Read  {0}: {1} objects", vertex.ToString(), vertexReader.objectsRead);
                 }
             }
+
+            Console.Error.WriteLine("!! Total restore took time = {0}", checkpointWatch.Elapsed);
+
+            if (this.networkChannel != null && this.networkChannel is Snapshottable)
+            {
+              ((Snapshottable)this.networkChannel).AnnounceStopRestore();
+              ((Snapshottable)this.networkChannel).WaitForAllStopRestoreMessages();
+            }
+
+
             this.Workers.Activate();
             this.baseComputations[computationIndex].Activate();
-            
-            Console.Error.WriteLine("!! Total restore took time = {0}", checkpointWatch.Elapsed);
             Logging.Info("! Reactivated the controller");
         }
 

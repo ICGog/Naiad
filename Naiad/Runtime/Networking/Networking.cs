@@ -149,9 +149,11 @@ namespace Microsoft.Research.Naiad.Runtime.Networking
         void AnnounceWorldStopped();
         void AnnounceWorldResumed();
         void AnnounceStopCheckpoint();
+        void AnnounceStopRestore();
         void WaitForAllWorldStoppedMessages();
         void WaitForAllWorldResumedMessages();
         void WaitForAllStopCheckpointMessages();
+        void WaitForAllStopRestoreMessages();
     }
     
     internal class TcpNetworkChannel : NetworkChannel, Snapshottable
@@ -226,6 +228,7 @@ namespace Microsoft.Research.Naiad.Runtime.Networking
             public readonly AutoResetEvent WorldStoppedEvent;
             public readonly AutoResetEvent WorldResumedEvent;
             public readonly AutoResetEvent StopCheckpointEvent;
+            public readonly AutoResetEvent StopRestoreEvent;
             public readonly AutoResetEvent WorkerPauseEvent;
             public readonly AutoResetEvent RollbackPauseEvent;
             public readonly AutoResetEvent RollbackProgressEvent;
@@ -300,6 +303,7 @@ namespace Microsoft.Research.Naiad.Runtime.Networking
                 this.WorldStoppedEvent = new AutoResetEvent(false);
                 this.WorldResumedEvent = new AutoResetEvent(false);
                 this.StopCheckpointEvent = new AutoResetEvent(false);
+                this.StopRestoreEvent = new AutoResetEvent(false);
                 this.WorkerPauseEvent = new AutoResetEvent(false);
                 this.RollbackPauseEvent = new AutoResetEvent(false);
                 this.RollbackProgressEvent = new AutoResetEvent(false);
@@ -331,6 +335,7 @@ namespace Microsoft.Research.Naiad.Runtime.Networking
 
                 this.WorldStoppedEvent.Dispose();
                 this.StopCheckpointEvent.Dispose();
+                this.StopRestoreEvent.Dispose();
                 this.WorldResumedEvent.Dispose();
                 this.WorkerPauseEvent.Dispose();
                 this.SendEvent.Dispose();
@@ -685,6 +690,23 @@ namespace Microsoft.Research.Naiad.Runtime.Networking
           }
         }
 
+        public void AnnounceStopRestore()
+        {
+          int seqno = this.GetSequenceNumber(-1);
+          SendBufferPage checkpointPage =
+            SendBufferPage.CreateSpecialPage(MessageHeader.StopRestore, seqno);
+          BufferSegment checkpointSegment = checkpointPage.Consume();
+          for (int i = 0; i < this.connections.Count; ++i)
+          {
+            if (i != this.localProcessID)
+            {
+              this.SendBufferSegment(checkpointPage.CurrentMessageHeader,
+                                     i,
+                                     checkpointSegment.DeepCopy());
+            }
+          }
+        }
+
         public void AnnounceResumeWorld()
         {
           int seqno = this.GetSequenceNumber(-1);
@@ -911,6 +933,15 @@ namespace Microsoft.Research.Naiad.Runtime.Networking
           {
             if (i != this.localProcessID)
               this.connections[i].StopCheckpointEvent.WaitOne();
+          }
+        }
+
+        public void WaitForAllStopRestoreMessages()
+        {
+          for (int i = 0; i < this.connections.Count; ++i)
+          {
+            if (i != this.localProcessID)
+              this.connections[i].StopRestoreEvent.WaitOne();
           }
         }
 
@@ -1556,6 +1587,10 @@ namespace Microsoft.Research.Naiad.Runtime.Networking
                         case SerializedMessageType.StopCheckpoint:
                             Logging.Progress("Got StopCheckpoint message from process {0}", srcProcessID);
                             this.connections[srcProcessID].StopCheckpointEvent.Set();
+                            break;
+                        case SerializedMessageType.StopRestore:
+                            Logging.Progress("Got StopRestore message from process {0}", srcProcessID);
+                            this.connections[srcProcessID].StopRestoreEvent.Set();
                             break;
                         // case SerializedMessageType.StopWorld:
                         //     Logging.Progress("Got StopWorld message from process {0}", srcProcessID);

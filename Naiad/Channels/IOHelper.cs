@@ -848,6 +848,7 @@ namespace Microsoft.Research.Naiad.Serialization
         WorldStopped = 15,
         WorldResumed = 16,
         StopCheckpoint = 17,
+        StopRestore = 18,
     }
 
     /// <summary>
@@ -964,6 +965,11 @@ namespace Microsoft.Research.Naiad.Serialization
         internal static MessageHeader StopCheckpoint
         {
           get { return new MessageHeader(-1, -1, -1, -1, 0, SerializedMessageType.StopCheckpoint); }
+        }
+
+        internal static MessageHeader StopRestore
+        {
+          get { return new MessageHeader(-1, -1, -1, -1, 0, SerializedMessageType.StopRestore); }
         }
 
         internal unsafe static int SizeOf
