@@ -847,6 +847,7 @@ namespace Microsoft.Research.Naiad.Serialization
         ResumeWorld = 14,
         WorldStopped = 15,
         WorldResumed = 16,
+        StopCheckpoint = 17,
     }
 
     /// <summary>
@@ -958,6 +959,11 @@ namespace Microsoft.Research.Naiad.Serialization
         internal static MessageHeader WorldResumed
         {
           get { return new MessageHeader(-1, -1, -1, -1, 0, SerializedMessageType.WorldResumed); }
+        }
+
+        internal static MessageHeader StopCheckpoint
+        {
+          get { return new MessageHeader(-1, -1, -1, -1, 0, SerializedMessageType.StopCheckpoint); }
         }
 
         internal unsafe static int SizeOf

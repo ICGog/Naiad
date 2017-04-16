@@ -148,8 +148,10 @@ namespace Microsoft.Research.Naiad.Runtime.Networking
         void AnnounceResumeWorld();
         void AnnounceWorldStopped();
         void AnnounceWorldResumed();
+        void AnnounceStopCheckpoint();
         void WaitForAllWorldStoppedMessages();
         void WaitForAllWorldResumedMessages();
+        void WaitForAllStopCheckpointMessages();
     }
     
     internal class TcpNetworkChannel : NetworkChannel, Snapshottable
@@ -223,6 +225,7 @@ namespace Microsoft.Research.Naiad.Runtime.Networking
 
             public readonly AutoResetEvent WorldStoppedEvent;
             public readonly AutoResetEvent WorldResumedEvent;
+            public readonly AutoResetEvent StopCheckpointEvent;
             public readonly AutoResetEvent WorkerPauseEvent;
             public readonly AutoResetEvent RollbackPauseEvent;
             public readonly AutoResetEvent RollbackProgressEvent;
@@ -296,6 +299,7 @@ namespace Microsoft.Research.Naiad.Runtime.Networking
 
                 this.WorldStoppedEvent = new AutoResetEvent(false);
                 this.WorldResumedEvent = new AutoResetEvent(false);
+                this.StopCheckpointEvent = new AutoResetEvent(false);
                 this.WorkerPauseEvent = new AutoResetEvent(false);
                 this.RollbackPauseEvent = new AutoResetEvent(false);
                 this.RollbackProgressEvent = new AutoResetEvent(false);
@@ -326,6 +330,7 @@ namespace Microsoft.Research.Naiad.Runtime.Networking
                 }
 
                 this.WorldStoppedEvent.Dispose();
+                this.StopCheckpointEvent.Dispose();
                 this.WorldResumedEvent.Dispose();
                 this.WorkerPauseEvent.Dispose();
                 this.SendEvent.Dispose();
@@ -663,6 +668,23 @@ namespace Microsoft.Research.Naiad.Runtime.Networking
           }
         }
 
+        public void AnnounceStopCheckpoint()
+        {
+          int seqno = this.GetSequenceNumber(-1);
+          SendBufferPage checkpointPage =
+            SendBufferPage.CreateSpecialPage(MessageHeader.StopCheckpoint, seqno);
+          BufferSegment checkpointSegment = checkpointPage.Consume();
+          for (int i = 0; i < this.connections.Count; ++i)
+          {
+            if (i != this.localProcessID)
+            {
+              this.SendBufferSegment(checkpointPage.CurrentMessageHeader,
+                                     i,
+                                     checkpointSegment.DeepCopy());
+            }
+          }
+        }
+
         public void AnnounceResumeWorld()
         {
           int seqno = this.GetSequenceNumber(-1);
@@ -881,6 +903,15 @@ namespace Microsoft.Research.Naiad.Runtime.Networking
             {
                 ev.Dispose();
             }
+        }
+
+        public void WaitForAllStopCheckpointMessages()
+        {
+          for (int i = 0; i < this.connections.Count; ++i)
+          {
+            if (i != this.localProcessID)
+              this.connections[i].StopCheckpointEvent.WaitOne();
+          }
         }
 
         public void WaitForAllWorldStoppedMessages()
@@ -1521,6 +1552,10 @@ namespace Microsoft.Research.Naiad.Runtime.Networking
                         case SerializedMessageType.ResumeWorld:
                             Logging.Progress("Got ResumeWorld message from process {0}", srcProcessID);
                             this.connections[srcProcessID].WorldResumedEvent.Set();
+                            break;
+                        case SerializedMessageType.StopCheckpoint:
+                            Logging.Progress("Got StopCheckpoint message from process {0}", srcProcessID);
+                            this.connections[srcProcessID].StopCheckpointEvent.Set();
                             break;
                         // case SerializedMessageType.StopWorld:
                         //     Logging.Progress("Got StopWorld message from process {0}", srcProcessID);

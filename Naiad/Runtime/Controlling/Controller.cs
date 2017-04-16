@@ -687,6 +687,11 @@ namespace Microsoft.Research.Naiad
               this.baseComputations[computationIndex].NotifyStageStable(stageId,
                                                                         new Pointstamp[] { stageFrontier[stageId]});
             }
+          if (this.networkChannel != null && this.networkChannel is Snapshottable)
+          {
+            ((Snapshottable)this.networkChannel).AnnounceStopCheckpoint();
+            ((Snapshottable)this.networkChannel).WaitForAllStopCheckpointMessages();
+          }
         }
 
         public void Restore(string path, int epoch, int computationIndex)
