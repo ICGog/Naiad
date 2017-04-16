@@ -1881,7 +1881,7 @@ namespace FaultToleranceExamples.ComplexFTWorkflow
                                         stagePointstamp.Second);
                     }
                   });
-
+            stableStageComputation.Activate();
             int curCheckpoint = 0;
             while (true)
             {
@@ -1893,6 +1893,7 @@ namespace FaultToleranceExamples.ComplexFTWorkflow
               computation.ResumeTheWorld();
               curCheckpoint++;
             }
+            computation.StagePointstamps.OnCompleted();
             stableStageComputation.Join();
           }
         }
