@@ -1155,12 +1155,12 @@ namespace Microsoft.Research.Naiad
 
       public void StopTheWorld()
       {
-        this.controller.Pause();
+        this.controller.PauseWithoutRollback();
       }
 
       public void ResumeTheWorld()
       {
-        this.controller.Resume();
+        this.controller.ResumeWithoutRollback();
       }
 
         public void ReceiveCheckpointFrontiersAndRepairProgress(IEnumerable<CheckpointLowWatermark> frontiers)

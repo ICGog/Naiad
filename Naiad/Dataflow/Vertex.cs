@@ -124,7 +124,6 @@ namespace Microsoft.Research.Naiad.Dataflow
                   minReachablePointstamp = pointstamps[i];
                 }
               }
-                Console.WriteLine("What {0} {1}", Stage.StageId, minReachablePointstamp);
               if (!lastCompletedInitialized ||
                   FTFrontier.IsLessThanOrEqualTo(lastCompletedStamp, minReachablePointstamp))
               {

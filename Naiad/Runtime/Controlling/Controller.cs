@@ -184,8 +184,8 @@ namespace Microsoft.Research.Naiad
         bool HasFailed { get; }
         long TicksSinceStartup { get; }
 
-      void Pause();
-      void Resume();
+        void PauseWithoutRollback();
+        void ResumeWithoutRollback();
 
         void PausePeerProcesses(IEnumerable<int> processes);
         void StartRollback(Action<string> logAction);
@@ -194,6 +194,7 @@ namespace Microsoft.Research.Naiad
 
         void ResetProgress();
 
+        void SignalPause();
         void SignalRestore();
 
         InternalComputation GetInternalComputation(int index);
@@ -369,6 +370,9 @@ namespace Microsoft.Research.Naiad
         private volatile bool aborted = false;
         private Thread restoreThread;
 
+        private AutoResetEvent pauseEvent;
+        private Thread pauseThread;
+
         private StreamWriter checkpointLog = null;
         private StreamWriter CheckpointLog
         {
@@ -424,6 +428,31 @@ namespace Microsoft.Research.Naiad
                     Console.WriteLine();
                 }
             }
+        }
+
+        public void PauseThread()
+        {
+          while (true)
+          {
+            this.pauseEvent.WaitOne();
+            if (this.aborted)
+            {
+              return;
+            }
+
+            this.Workers.PauseWithoutRollback();
+            // if (this.networkChannel != null && this.networkChannel is Snapshottable)
+            // {
+            //     ((Snapshottable)this.networkChannel).AnnounceWorldStopped();
+            // }
+            // block until the computation is resumed.
+            this.pauseEvent.WaitOne();
+            this.Workers.ResumeWithoutRollback();
+            // if (this.networkChannel != null && this.networkChannel is Snapshottable)
+            // {
+            //     ((Snapshottable)this.networkChannel).AnnounceWorldResumed();
+            // }
+          }
         }
 
         public void RestorationThread()
@@ -597,6 +626,11 @@ namespace Microsoft.Research.Naiad
             this.restoreEvent.Set();
         }
 
+        public void SignalPause()
+        {
+            this.pauseEvent.Set();
+        }
+
         public void Checkpoint(bool major)
         {
             throw new NotImplementedException();
@@ -646,8 +680,10 @@ namespace Microsoft.Research.Naiad
                 }
             }
             Console.Error.WriteLine("!! Total checkpoint took time = {0}", checkpointWatch.Elapsed);
+
             foreach (var stageId in stagesWithNewFrontiers)
             {
+              Console.WriteLine("New Frontiers {0} {1}", stageId, stageFrontier[stageId]);
               this.baseComputations[computationIndex].NotifyStageStable(stageId,
                                                                         new Pointstamp[] { stageFrontier[stageId]});
             }
@@ -1012,6 +1048,8 @@ namespace Microsoft.Research.Naiad
             this.aborted = true;
             this.restoreEvent.Set();
             this.restoreThread.Join();
+            this.pauseEvent.Set();
+            this.pauseThread.Join();
 
             this.workerGroup.Abort();
             
@@ -1116,6 +1154,10 @@ namespace Microsoft.Research.Naiad
             this.restoreThread = new Thread(new ThreadStart(this.RestorationThread));
             this.restoreThread.Start();
 
+            this.pauseEvent = new AutoResetEvent(false);
+            this.pauseThread = new Thread(new ThreadStart(this.PauseThread));
+            this.pauseThread.Start();
+
             this.workerGroup = new BaseWorkerGroup(this, config.WorkerCount);
 
             this.workerGroup.Start();
@@ -1218,6 +1260,7 @@ namespace Microsoft.Research.Naiad
                 this.server.Dispose();
 
             this.restoreEvent.Dispose();
+            this.pauseEvent.Dispose();
 
             Logging.Stop();
         }
@@ -1251,25 +1294,45 @@ namespace Microsoft.Research.Naiad
             }
         }
 
-        public void Pause()
+        public void PauseWithoutRollback()
         {
-          this.Workers.PauseWithoutRollback();
+          SignalPause();
           if (this.networkChannel != null && this.networkChannel is Snapshottable)
           {
-            ((Snapshottable)this.networkChannel).AnnounceStopCheckpoint();
-            ((Snapshottable)this.networkChannel).WaitForAllCheckpointMessages();
+            ((Snapshottable)this.networkChannel).AnnounceStopWorld();
+            ((Snapshottable)this.networkChannel).WaitForAllWorldStoppedMessages();
           }
           this.workerGroup.DrainAllQueuedMessages();
         }
 
-        public void Resume()
+        public void ResumeWithoutRollback()
         {
-          this.Workers.ResumeWithoutRollback();
+          SignalPause();
           if (this.networkChannel != null && this.networkChannel is Snapshottable)
           {
-            ((Snapshottable)this.networkChannel).ResumeAfterCheckpoint();
+            ((Snapshottable)this.networkChannel).AnnounceResumeWorld();
+            ((Snapshottable)this.networkChannel).WaitForAllWorldResumedMessages();
           }
         }
+
+        // public void PauseWithoutRollback()
+        // {
+        //   if (this.networkChannel != null && this.networkChannel is Snapshottable)
+        //   {
+        //     ((Snapshottable)this.networkChannel).AnnounceStopWorld();
+        //     ((Snapshottable)this.networkChannel).WaitForAllWorldStoppedMessages();
+        //   }
+        //   this.workerGroup.DrainAllQueuedMessages();
+        // }
+
+        // public void ResumeWithoutRollback()
+        // {
+        //   if (this.networkChannel != null && this.networkChannel is Snapshottable)
+        //   {
+        //     ((Snapshottable)this.networkChannel).AnnounceResumeWorld();
+        //     ((Snapshottable)this.networkChannel).WaitForAllWorldResumedMessages();
+        //   }
+        // }
 
         public void Pause(Action<string> logAction)
         {

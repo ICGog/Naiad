@@ -1697,6 +1697,7 @@ namespace FaultToleranceExamples.ComplexFTWorkflow
         private void ReactToStable(object o, StageStableEventArgs args)
         {
             Pointstamp stamp = args.frontier[0];
+            Console.WriteLine("Stage {0} stable at {1}", args.stageId, stamp);
             if (args.stageId == this.perfect.slowStage)
             {
                 Epoch slowTime = new Epoch(stamp.Timestamp.a);
@@ -1860,12 +1861,17 @@ namespace FaultToleranceExamples.ComplexFTWorkflow
 
         private void StopTheWorld(string logPrefix, int checkpointFrequencyMs)
         {
-          for (int curCheckpoint = 0; ; curCheckpoint++)
+          Console.WriteLine("Started StopTheWorld thread");
+          int curCheckpoint = 0;
+          while (true)
           {
             Thread.Sleep(checkpointFrequencyMs);
+            Console.WriteLine("StopTheWorld");
             computation.StopTheWorld();
             computation.CheckpointAll(logPrefix, curCheckpoint);
+            Console.WriteLine("ResumeTheWorld");
             computation.ResumeTheWorld();
+            curCheckpoint++;
           }
         }
 
@@ -2109,20 +2115,18 @@ namespace FaultToleranceExamples.ComplexFTWorkflow
                 }
                 this.cc.Make(computation, this.slow, this.perfect);
 
-                if (this.config.ProcessID == 0)
+                if (stopTheWorldFT)
                 {
-                  if (stopTheWorldFT)
-                  {
-                    this.stopTheWorldThread = new Thread(() => this.StopTheWorld(logPrefix + "/checkpoint", stopTheWorldFrequencyMs));
-                    this.stopTheWorldThread.Start();
-                  }
-                  else
-                  {
+                  this.stopTheWorldThread = new Thread(() => this.StopTheWorld(logPrefix + "/checkpoint", stopTheWorldFrequencyMs));
+                  this.stopTheWorldThread.Start();
+                }
+
+                if (this.config.ProcessID == 0 && !stopTheWorldFT)
+                {
                     manager.Initialize(
                         computation,
                         this.slow.ToMonitor.Concat(this.cc.ToMonitor.Concat(this.perfect.ToMonitor)).Distinct(),
                         managerWorkerCount, minimalLogging);
-                  }
                 }
 
                 //computation.OnStageStable += (x, y) => { Console.WriteLine(y.stageId + " " + y.frontier[0]); };
