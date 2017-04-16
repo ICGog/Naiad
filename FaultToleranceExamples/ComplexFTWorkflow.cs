@@ -877,7 +877,7 @@ namespace FaultToleranceExamples.ComplexFTWorkflow
                 var totalTicks = this.computation.Controller.Stopwatch.ElapsedTicks;
                 var totalMicroSeconds = (totalTicks * 1000000L) / System.Diagnostics.Stopwatch.Frequency;
 
-                foreach (var record in released.Take(1))
+                foreach (var record in released)
                 {
                     if (record.Second.startMs == -1)
                     {
