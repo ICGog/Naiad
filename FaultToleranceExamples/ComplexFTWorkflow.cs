@@ -2253,6 +2253,7 @@ namespace FaultToleranceExamples.ComplexFTWorkflow
                     if (!noFailures)
                     {
                       if (failOnceAfterSecs > 0) {
+                        Thread.Sleep(failOnceAfterSecs * 1000);
                         HashSet<int> processes = new HashSet<int>();
                         int toFail = 3;
                         for (int p = 0; p < toFail; )
