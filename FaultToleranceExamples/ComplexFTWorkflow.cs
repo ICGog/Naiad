@@ -1319,7 +1319,7 @@ namespace FaultToleranceExamples.ComplexFTWorkflow
             public int otherKey;
             public long entryTicks;
             public int batchNumber;
-            public S256 junk;
+            public S2048 junk;
 
             public bool Equals(HTRecord other)
             {
@@ -1960,6 +1960,7 @@ namespace FaultToleranceExamples.ComplexFTWorkflow
             bool minimalLogging = false;
             int debugProcess = -1;
             int failureIntervalSecs = 15;
+            int failOnceAfterSecs = 0;
             int i = 1;
             bool nonIncrementalFTManager = false;
             bool stopTheWorldFT = false;
@@ -2095,6 +2096,10 @@ namespace FaultToleranceExamples.ComplexFTWorkflow
                         break;
                     case "-stoptheworldfrequency":
                         stopTheWorldFrequencyMs = Int32.Parse(args[i + 1]);
+                        i += 2;
+                        break;
+                    case "-failonceaftersecs":
+                        failOnceAfterSecs = Int32.Parse(args[i + 1]);
                         i += 2;
                         break;
                     default:
@@ -2242,27 +2247,39 @@ namespace FaultToleranceExamples.ComplexFTWorkflow
                         .Except(failSlow);
                     IEnumerable<int> failFast = Enumerable.Range(fpBase, fpRange)
                         .Except(failSlow.Concat(failMedium));
-
+                    Random random = new Random();
+                    int failBase = Math.Max(slowBase, 1);
+                    int failable = ccBase + ccRange - failBase;
                     if (!noFailures)
                     {
-                      while (true)
-                      {
-                        Random random = new Random();
-                        //System.Threading.Thread.Sleep(Timeout.Infinite);
-                        System.Threading.Thread.Sleep(failureIntervalSecs * 1000);
-                        int failBase = Math.Max(slowBase, 1);
-                        int failable = ccBase + ccRange - failBase;
-                        if (failable > 0 && failable + slowBase <= fpBase)
+                      if (failOnceAfterSecs > 0) {
+                        HashSet<int> processes = new HashSet<int>();
+                        int toFail = 3;
+                        for (int p = 0; p < toFail; )
                         {
+                          if (processes.Add(failBase + random.Next(failable)))
+                            p++;
+                        }
+                        manager.FailProcess(processes);
+                        manager.PerformRollback(failSlow, failMedium, failFast);
+                      }
+                      else
+                      {
+                        while (true)
+                        {
+                          System.Threading.Thread.Sleep(failureIntervalSecs * 1000);
+                          if (failable > 0 && failable + slowBase <= fpBase)
+                          {
                             int toFail = random.Next(10);
                             HashSet<int> processes = new HashSet<int>();
                             for (int p = 0; p < toFail; ++p)
                             {
-                                processes.Add(failBase + random.Next(failable));
+                              processes.Add(failBase + random.Next(failable));
                             }
                             manager.FailProcess(processes);
+                          }
+                          manager.PerformRollback(failSlow, failMedium, failFast);
                         }
-                        manager.PerformRollback(failSlow, failMedium, failFast);
                       }
                     }
                 }
