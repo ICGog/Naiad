@@ -289,7 +289,7 @@ namespace FaultToleranceExamples.ConnectedComponents
                 {
                     //output.Sync(0);
                     //Console.WriteLine("Time post first sync {0}", stopwatch.ElapsedMilliseconds);
-                    stopwatch.Restart();
+                    //stopwatch.Restart();
                     int j = 0;
                     int curEpoch = 1;
                     for (; curEpoch <= numEpochsToRun; curEpoch++)
@@ -306,14 +306,6 @@ namespace FaultToleranceExamples.ConnectedComponents
                           output.Sync(curEpoch - 1);
                         }
                         edges.OnNext(changes);
-//           computation.StopTheWorld();
-//           Console.WriteLine("StoppedTheWorld");
-// //          Thread.Sleep(2000);
-//           computation.CheckpointAll("/tmp/falkirk/mymy", curEpoch);
-//           computation.ResumeTheWorld();
-//           Console.WriteLine("ResumedTheWorld");
-
-//                        manager.StopComputation(curEpoch);
                     }
                     output.Sync(numEpochsToRun);
                     Console.WriteLine("Total time {0}", stopwatch.ElapsedMilliseconds);
