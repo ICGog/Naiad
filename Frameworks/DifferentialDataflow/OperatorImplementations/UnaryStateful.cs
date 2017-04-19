@@ -101,7 +101,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
 
             internTable = null;
             keyIndices = null;
-            curKeyIndices = null;
+//            curKeyIndices = null;
             keysToProcess = null;
         }
 
@@ -158,7 +158,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
         protected CollectionTraceCheckpointable<R> outputTrace;             // collects outputs
 
         protected Dictionary<K, UnaryKeyIndices> keyIndices;
-        protected Dictionary<K, UnaryKeyIndices> curKeyIndices;
+//        protected Dictionary<K, UnaryKeyIndices> curKeyIndices;
         protected NaiadList<K> keysToProcess = new NaiadList<K>(1);
 
         public virtual void OnInput(Weighted<S> entry, T time)
@@ -175,7 +175,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
             inputTrace.Introduce(ref state.unprocessed, value(entry.record), entry.weight, internTable.Intern(time));
 
             keyIndices[k] = state;
-            curKeyIndices[k] = state;
+//            curKeyIndices[k] = state;
         }
 
         public virtual void Compute()
@@ -227,12 +227,12 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
                 if (traceIndices.IsEmpty)
                 {
                     keyIndices.Remove(key);
-                    curKeyIndices.Remove(key);
+//                    curKeyIndices.Remove(key);
                 }
                 else
                 {
                     keyIndices[key] = traceIndices;
-                    curKeyIndices[key] = traceIndices;
+//                    curKeyIndices[key] = traceIndices;
                 }
             }
         }
@@ -439,7 +439,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
 
             if (!this.isShutdown)
             {
-                foreach (var indices in this.curKeyIndices.Values)
+                foreach (var indices in this.keyIndices.Values)
                 {
                     checkpointEntries +=
                         this.inputTrace.CountEntries(indices.processed, checkpoint, this.internTable.times, true, false).First;
@@ -461,7 +461,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
                 if (checkpoint.IsFullCheckpoint)
                 {
                     this.CompactInternTable();
-                    curKeyIndices = keyIndices;
+//                    curKeyIndices = keyIndices;
                 }
 
                 // int compactedCount = 0;
@@ -495,7 +495,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
 
                 List<Pair<Pair<K, UnaryKeyIndices>, Pair<int, int>>> indicesTimeCounts =
                   new List<Pair<Pair<K, UnaryKeyIndices>, Pair<int, int>>>();
-                foreach (var key in this.curKeyIndices)
+                foreach (var key in this.keyIndices)
                 {
                     UnaryKeyIndices indices = key.Value;
                     Pair<int, int> timeCount = this.CountTimesInCheckpoint(indices, checkpoint);
@@ -522,7 +522,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
                                                    this.internTable.times,
                                                    writer);
                 }
-                this.curKeyIndices = new Dictionary<K, UnaryKeyIndices>();
+//                this.curKeyIndices = new Dictionary<K, UnaryKeyIndices>();
                 this.keysToProcess.Checkpoint(writer);
             }
 
@@ -596,7 +596,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
 
                     this.checkpointManager.RegisterCheckpoint(counts.First, lastFullCheckpoint, counts.Second, lastIncrementalCheckpoint);
                 }
-                this.curKeyIndices = new Dictionary<K, UnaryKeyIndices>();
+//                this.curKeyIndices = new Dictionary<K, UnaryKeyIndices>();
             }
         }
 
@@ -617,13 +617,13 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
                     if (indices.IsEmpty)
                     {
                         this.keyIndices.Remove(key);
-                        this.curKeyIndices.Remove(key);
+//                        this.curKeyIndices.Remove(key);
                     }
                     else
                     {
                         this.keyIndices[key] = indices;
-                        if (curKeyIndices.ContainsKey(key))
-                          this.curKeyIndices[key] = indices;
+//                        if (curKeyIndices.ContainsKey(key))
+//                          this.curKeyIndices[key] = indices;
 
                         this.inputTrace.MarkUsedTimes(indices.processed, usedTimes);
                         this.inputTrace.MarkUsedTimes(indices.unprocessed, usedTimes);
@@ -657,7 +657,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
         {
             // empty all the state
             this.keyIndices = new Dictionary<K, UnaryKeyIndices>();
-            this.curKeyIndices = new Dictionary<K, UnaryKeyIndices>();
+//            this.curKeyIndices = new Dictionary<K, UnaryKeyIndices>();
             this.keysToProcess.Clear();
             this.internTable = new LatticeInternTable<T>();
             this.inputTrace = createInputTrace();
@@ -667,7 +667,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
 
         protected override void RestorePartialCheckpoint(NaiadReader reader, ICheckpoint<T> checkpoint)
         {
-            this.curKeyIndices = new Dictionary<K, UnaryKeyIndices>();
+//            this.curKeyIndices = new Dictionary<K, UnaryKeyIndices>();
             long checkpointEntries = 0;
 
             this.isShutdown = reader.Read<bool>();
@@ -689,7 +689,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
                     checkpointEntries += this.outputTrace.RestoreKey(ref indices.output, this.internTable, reader);
 
                     this.keyIndices[key] = indices;
-                    this.curKeyIndices[key] = indices;
+//                    this.curKeyIndices[key] = indices;
                 }
 
                 this.keysToProcess.Restore(reader, false);
@@ -714,7 +714,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
             this.inputImmutable = immutableInput;
 
             internTable = new LatticeInternTable<T>();
-            curKeyIndices = new Dictionary<K, UnaryKeyIndices>();
+//            curKeyIndices = new Dictionary<K, UnaryKeyIndices>();
             keyIndices = new Dictionary<K, UnaryKeyIndices>();
             inputTrace = createInputTrace();
             outputTrace = createOutputTrace();
@@ -774,7 +774,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
 
             internTable = null;
             keyIndices = null;
-            curKeyIndices = null;
+//            curKeyIndices = null;
         }
 
         protected override void SetPotentialRollbackRange(ICheckpoint<T> stableRange, ICheckpoint<T> rollbackRange)
@@ -828,7 +828,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
                 inputTrace.Introduce(ref state.unprocessed, value(entry.record), entry.weight, internTable.Intern(time));
 
                 keyIndices[k] = state;
-                curKeyIndices[k] = state;
+//                curKeyIndices[k] = state;
             }
 
             // process each key what needs processing.
@@ -846,7 +846,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
 
         protected LatticeInternTable<T> internTable = new LatticeInternTable<T>();
         protected Dictionary<K, UnaryKeyIndices> keyIndices = new Dictionary<K, UnaryKeyIndices>();
-        protected Dictionary<K, UnaryKeyIndices> curKeyIndices = new Dictionary<K, UnaryKeyIndices>();
+//        protected Dictionary<K, UnaryKeyIndices> curKeyIndices = new Dictionary<K, UnaryKeyIndices>();
         protected Dictionary<T, HashSet<K>> KeysToProcessAtTimes = new Dictionary<T, HashSet<K>>();
 
         protected int outputWorkspace;
@@ -896,12 +896,12 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
                 if (traceIndices.IsEmpty)
                 {
                     keyIndices.Remove(key);
-                    curKeyIndices.Remove(key);
+//                    curKeyIndices.Remove(key);
                 }
                 else
                 {
                     keyIndices[key] = traceIndices;
-                    curKeyIndices[key] = traceIndices;
+//                    curKeyIndices[key] = traceIndices;
                 }
             }
         }
@@ -1105,7 +1105,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
 
             if (!this.isShutdown)
             {
-                foreach (var indices in this.curKeyIndices.Values)
+                foreach (var indices in this.keyIndices.Values)
                 {
                     checkpointEntries +=
                         this.inputTrace.CountEntries(indices.processed, checkpoint, this.internTable.times, true, false).First;
@@ -1127,7 +1127,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
                 if (checkpoint.IsFullCheckpoint)
                 {
                     this.CompactInternTable();
-                    curKeyIndices = keyIndices;
+//                    curKeyIndices = keyIndices;
                 }
 
                 // int compactedCount = 0;
@@ -1141,7 +1141,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
 
                 List<Pair<Pair<K, UnaryKeyIndices>, Pair<int, int>>> indicesTimeCounts =
                   new List<Pair<Pair<K, UnaryKeyIndices>, Pair<int, int>>>();
-                foreach (var key in this.curKeyIndices)
+                foreach (var key in this.keyIndices)
                 {
                     UnaryKeyIndices indices = key.Value;
                     Pair<int, int> timeCount = this.CountTimesInCheckpoint(indices, checkpoint);
@@ -1197,7 +1197,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
                         writer.Write(key);
                     }
                 }
-                this.curKeyIndices = new Dictionary<K, UnaryKeyIndices>();
+//                this.curKeyIndices = new Dictionary<K, UnaryKeyIndices>();
             }
 
             this.checkpointManager.RegisterCheckpoint(checkpointEntries, checkpoint);
@@ -1270,7 +1270,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
 
                     this.checkpointManager.RegisterCheckpoint(counts.First, lastFullCheckpoint, counts.Second, lastIncrementalCheckpoint);
                 }
-                this.curKeyIndices = new Dictionary<K, UnaryKeyIndices>();
+//                this.curKeyIndices = new Dictionary<K, UnaryKeyIndices>();
             }
         }
 
@@ -1291,13 +1291,13 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
                     if (indices.IsEmpty)
                     {
                         this.keyIndices.Remove(key);
-                        this.curKeyIndices.Remove(key);
+//                        this.curKeyIndices.Remove(key);
                     }
                     else
                     {
                         this.keyIndices[key] = indices;
-                        if (curKeyIndices.ContainsKey(key))
-                          this.curKeyIndices[key] = indices;
+//                        if (curKeyIndices.ContainsKey(key))
+//                          this.curKeyIndices[key] = indices;
 
                         this.inputTrace.MarkUsedTimes(indices.processed, usedTimes);
                         this.inputTrace.MarkUsedTimes(indices.unprocessed, usedTimes);
@@ -1331,7 +1331,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
         {
             // empty all the state
             this.keyIndices = new Dictionary<K, UnaryKeyIndices>();
-            this.curKeyIndices = new Dictionary<K, UnaryKeyIndices>();
+//            this.curKeyIndices = new Dictionary<K, UnaryKeyIndices>();
             this.KeysToProcessAtTimes = new Dictionary<T, HashSet<K>>();
             this.internTable = new LatticeInternTable<T>();
             this.inputTrace = createInputTrace();
@@ -1341,7 +1341,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
 
         protected override void RestorePartialCheckpoint(NaiadReader reader, ICheckpoint<T> checkpoint)
         {
-            this.curKeyIndices = new Dictionary<K, UnaryKeyIndices>();
+//            this.curKeyIndices = new Dictionary<K, UnaryKeyIndices>();
             long checkpointEntries = 0;
 
             this.isShutdown = reader.Read<bool>();
@@ -1363,7 +1363,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
                     checkpointEntries += this.outputTrace.RestoreKey(ref indices.output, this.internTable, reader);
 
                     this.keyIndices[key] = indices;
-                    this.curKeyIndices[key] = indices;
+//                    this.curKeyIndices[key] = indices;
                 }
 
                 int timeCount = reader.Read<int>();
@@ -1402,7 +1402,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImple
 
             internTable = new LatticeInternTable<T>();
             keyIndices = new Dictionary<K, UnaryKeyIndices>();
-            curKeyIndices = new Dictionary<K, UnaryKeyIndices>();
+//            curKeyIndices = new Dictionary<K, UnaryKeyIndices>();
             inputTrace = createInputTrace();
             outputTrace = createOutputTrace();
 
