@@ -674,8 +674,6 @@ namespace Microsoft.Research.Naiad.Dataflow
         {
           bool full = !this.NextCheckpointIsIncremental(candidateIncrementalCheckpoint);
           Console.WriteLine("MustStartFullCheckpoint {0}", full);
-          if (full)
-            Console.WriteLine("MustStartFullCheckpoint");
           return full;
         }
 

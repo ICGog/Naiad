@@ -749,10 +749,12 @@ namespace Microsoft.Research.Naiad.Runtime.FaultTolerance
 
             // write our state, if we are stateful
             toWait.Add(this.checkpointWriter.Checkpoint(upTo));
-
+            long preWhileMicroSeconds = ((stopwatch.ElapsedTicks - startTicks) * 1000000L) / System.Diagnostics.Stopwatch.Frequency;
             int pageSize = 16 * 1024;
+            int iterations = 0;
             while (true)
             {
+                iterations++;
                 SendBufferPage sendPage = new SendBufferPage(GlobalBufferPool<byte>.pool, pageSize);
                 sendPage.ReserveBytes(sizeof(int));
 
@@ -809,6 +811,8 @@ namespace Microsoft.Research.Naiad.Runtime.FaultTolerance
 
                 if (fits)
                 {
+                    long inFitsMicroSeconds = ((stopwatch.ElapsedTicks - startTicks) * 1000000L) / System.Diagnostics.Stopwatch.Frequency;
+
                     sendPage.WriteReserved(intSerializer, sendPage.producerPointer);
                     sendPage.FinalizeRawWrites();
 
@@ -845,6 +849,7 @@ namespace Microsoft.Research.Naiad.Runtime.FaultTolerance
                     long totalMicroSeconds = (endTicks * 1000000L) / System.Diagnostics.Stopwatch.Frequency;
 
                     Task toPersist = Task.WhenAll(toWait);
+                    long postWhenAllMicroSeconds = ((stopwatch.ElapsedTicks - startTicks) * 1000000L) / System.Diagnostics.Stopwatch.Frequency;
                     if (toPersist.IsCompleted)
                     {
                         this.vertex.scheduler.WriteLogEntry("{0:D3}.{1:D3} MC {2:D7} {3:D11} {4}",
@@ -858,8 +863,8 @@ namespace Microsoft.Research.Naiad.Runtime.FaultTolerance
                             throw new ApplicationException("No persistence but had to wait");
                         }
 
-                        this.vertex.scheduler.WriteLogEntry("{0:D3}.{1:D3} MW {2:D7} {3:D11} {4}",
-                            this.vertex.Stage.StageId, this.vertex.VertexId, microSeconds, totalMicroSeconds, upTo);
+                        this.vertex.scheduler.WriteLogEntry("{0:D3}.{1:D3} MW {2:D7} {3:D11} {4} {5:D7} {6:D7} {7:D7} {8}",
+                                                            this.vertex.Stage.StageId, this.vertex.VertexId, microSeconds, totalMicroSeconds, upTo, preWhileMicroSeconds, inFitsMicroSeconds, postWhenAllMicroSeconds, iterations);
 
                         this.awaitingPersistence.Add(this.lastCheckpoint, false);
 

@@ -48,6 +48,12 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow
             public bool NextCheckpointIsIncremental(long entriesSinceLastCheckpoint)
             {
                 long newProspectiveEntriesInIncrementalCheckpoints = entriesSinceLastCheckpoint + this.entriesInIncrementalCheckpoints;
+                Console.WriteLine("NextCheckpointIsIncremental: {0} {1} {2} {3}",
+                                  entriesSinceLastCheckpoint,
+                                  this.entriesInIncrementalCheckpoints,
+                                  this.entriesInFullCheckpoint,
+                                  (double)newProspectiveEntriesInIncrementalCheckpoints / (double)this.entriesInFullCheckpoint);
+
                 return
                     (!this.ForceFullCheckpoint &&
                      ((double)newProspectiveEntriesInIncrementalCheckpoints /
