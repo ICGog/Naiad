@@ -282,10 +282,12 @@ namespace Microsoft.Research.Naiad.Dataflow
         where TTime : Time<TTime>
     {
         private HashSet<TTime> OutstandingResumes = new HashSet<TTime>();
+        private HashSet<TTime> OutstandingFakeResumes = new HashSet<TTime>();
         private Microsoft.Research.Naiad.Runtime.Progress.ProgressUpdateBuffer<TTime> progressBuffer;
         internal Checkpointer<TTime> Checkpointer;
         internal INotificationLogger<TTime> notificationLogger;
         internal readonly Stage<TTime> TypedStage;
+        internal List<Action<TTime>> notificationCallbacks = new List<Action<TTime>>();
 
         /// <summary>
         /// The stage to which this vertex belongs.
@@ -389,6 +391,7 @@ namespace Microsoft.Research.Naiad.Dataflow
         {
             base.OnShutdown();
             OutstandingResumes = null;
+            OutstandingFakeResumes = null;
             progressBuffer.Flush();    // should be unnecessary
             progressBuffer = null;
             if (this.Checkpointer != null)
@@ -412,7 +415,7 @@ namespace Microsoft.Research.Naiad.Dataflow
         /// </summary>
         /// <param name="requirement">The requirement time.</param>
         /// <param name="capability">The capability time.</param>
-        public void NotifyAt(TTime requirement, TTime capability)
+        public void NotifyAt(TTime requirement, TTime capability, bool isFake = false)
         {
             if (!requirement.LessThan(capability))
                 Console.Error.WriteLine("Requesting a notification with a requirement not less than the capability");
@@ -429,21 +432,38 @@ namespace Microsoft.Research.Naiad.Dataflow
                     return;
                 }
 
-                if (!OutstandingResumes.Contains(capability))
+                if (isFake)
                 {
-                    OutstandingResumes.Add(capability);
-
-                    if (this.LoggingEnabled && !this.Stage.InternalComputation.IsRestoring)
+                    if (!OutstandingFakeResumes.Contains(capability))
                     {
-                        this.notificationLogger.LogNotificationRequest(this.CurrentEventTime, requirement, capability);
+                        OutstandingFakeResumes.Add(capability);
+
+                        // do some progress magic
+                        progressBuffer.Update(capability, 1);
+                        progressBuffer.Flush();
+
+                        // inform the scheduler
+                        this.Scheduler.EnqueueNotify(this, this.CurrentEventTime, requirement, capability, true, true, isFake);
                     }
+                }
+                else
+                {
+                    if (!OutstandingResumes.Contains(capability))
+                    {
+                        OutstandingResumes.Add(capability);
 
-                    // do some progress magic 
-                    progressBuffer.Update(capability, 1);
-                    progressBuffer.Flush();
+                        if (this.LoggingEnabled && !this.Stage.InternalComputation.IsRestoring)
+                        {
+                          this.notificationLogger.LogNotificationRequest(this.CurrentEventTime, requirement, capability);
+                        }
 
-                    // inform the scheduler
-                    this.Scheduler.EnqueueNotify(this, this.CurrentEventTime, requirement, capability, true, true);
+                        // do some progress magic 
+                        progressBuffer.Update(capability, 1);
+                        progressBuffer.Flush();
+
+                        // inform the scheduler
+                        this.Scheduler.EnqueueNotify(this, this.CurrentEventTime, requirement, capability, true, true, isFake);
+                    }
                 }
             }
         }
@@ -486,31 +506,43 @@ namespace Microsoft.Research.Naiad.Dataflow
                 {
                     this.Entrancy = this.Entrancy - 1;
 
-                    OutstandingResumes.Remove(time);
-
-                    progressBuffer.Update(time, -1);
-
-                    this.PushEventTime(time);
-
-                    if (this.LoggingEnabled && !this.Stage.InternalComputation.IsRestoring)
+                    if (workItem.IsFake)
                     {
-                        // if we are restoring then by definition we are replaying from a log entry and don't need to re-log it
-                        this.notificationLogger.LogNotification(time);
+                        OutstandingFakeResumes.Remove(time);
+
+                        progressBuffer.Update(time, -1);
+
+                        foreach (var c in this.notificationCallbacks)
+                        {
+                            c.Invoke(time);
+                        }
                     }
-
-                    this.OnNotify(time);
-
-                    // if the notification didn't request another notification for the same time, then the time is complete and we
-                    // may want to checkpoint
-                    if (this.LoggingEnabled && !OutstandingResumes.Contains(time))
+                    else
                     {
-                        considerCheckpointing = true;
-                    }
+                        OutstandingResumes.Remove(time);
 
-                    TTime poppedTime = this.PopEventTime();
-                    if (poppedTime.CompareTo(time) != 0)
-                    {
-                        throw new ApplicationException("Time stack mismatch");
+                        progressBuffer.Update(time, -1);
+                        this.PushEventTime(time);
+
+                        if (this.LoggingEnabled && !this.Stage.InternalComputation.IsRestoring)
+                        {
+                          // if we are restoring then by definition we are replaying from a log entry and don't need to re-log it
+                          this.notificationLogger.LogNotification(time);
+                        }
+
+                        this.OnNotify(time);
+                        // if the notification didn't request another notification for the same time, then the time is complete and we
+                        // may want to checkpoint
+                        if (this.LoggingEnabled && !OutstandingResumes.Contains(time))
+                        {
+                            considerCheckpointing = true;
+                        }
+
+                        TTime poppedTime = this.PopEventTime();
+                        if (poppedTime.CompareTo(time) != 0)
+                        {
+                            throw new ApplicationException("Time stack mismatch");
+                        }
                     }
 
                     this.Entrancy = this.Entrancy + 1;

@@ -328,9 +328,99 @@ namespace Microsoft.Research.Naiad.Dataflow
         where T : Time<T>
     {
         private readonly Action<Message<S, T>, ReturnAddress> MessageCallback;
+        private readonly bool nonSelective = true;
+        private Dictionary<int, List<Pair<Message<S, T>, ReturnAddress>>> buffered = new Dictionary<int, List<Pair<Message<S, T>, ReturnAddress>>>();
+        private int currentEpoch = -1;
+
+        private void MakeNonSelectiveNotification(Pointstamp p)
+        {
+            T notifyTime = default(T);
+            notifyTime.InitializeFrom(p, p.Timestamp.Length);
+            // We can use a dummy time for the event time.
+            this.vertex.PushEventTime(default(T));
+            this.vertex.NotifyAt(notifyTime, notifyTime, true);
+            T poppedTime = this.vertex.PopEventTime();
+            if (poppedTime.CompareTo(default(T)) != 0)
+            {
+                throw new ApplicationException("Time stack mismatch");
+            }
+        }
+
+        private void NotifyCallback(T t)
+        {
+            Pointstamp p = t.ToPointstamp(this.vertex.Stage.StageId);
+            for (int i=1; i<p.Timestamp.Length; ++i)
+            {
+                if (p.Timestamp[i] != Int32.MaxValue - 1) {
+                    throw new ApplicationException("Unexpected notify " + p.ToString());
+                }
+            }
+            int releaseEpoch = p.Timestamp.a + 1;
+            if (this.buffered.ContainsKey(releaseEpoch))
+            {
+                var b = this.buffered[releaseEpoch];
+                this.buffered.Remove(releaseEpoch);
+                foreach (var payload in b)
+                {
+                    var message = payload.First;
+                    var from = payload.Second;
+                    this.vertex.PushEventTime(message.time);
+                    if (this.LoggingEnabled)
+                        this.logger.LogMessage(message, from);
+                    this.MessageCallback(message, from);
+                    T poppedTime = this.vertex.PopEventTime();
+                    if (poppedTime.CompareTo(message.time) != 0)
+                    {
+                        throw new ApplicationException("Time stack mismatch");
+                    }
+                }
+            }
+            if (this.buffered.Count == 0)
+            {
+                this.currentEpoch = -1;
+            }
+            else
+            {
+                ++p.Timestamp.a;
+                this.MakeNonSelectiveNotification(p);
+            }
+        }
 
         public override void OnReceive(Message<S, T> message, ReturnAddress from)
         {
+            if (this.nonSelective)
+            {
+                Pointstamp p = message.time.ToPointstamp(this.vertex.Stage.StageId);
+                if (this.currentEpoch == -1)
+                {
+                    if (this.buffered.Count > 0)
+                    {
+                        throw new ApplicationException("Buffered entries");
+                    }
+                    this.currentEpoch = p.Timestamp.a;
+                    for (int i = 1; i < p.Timestamp.Length; ++i)
+                    {
+                        p.Timestamp[i] = Int32.MaxValue - 1;
+                    }
+                    this.MakeNonSelectiveNotification(p);
+                }
+                else if (this.currentEpoch < p.Timestamp.a)
+                {
+                    if (!buffered.ContainsKey(p.Timestamp.a))
+                    {
+                        buffered[p.Timestamp.a] = new List<Pair<Message<S, T>, ReturnAddress>>();
+                    }
+                    buffered[p.Timestamp.a].Add(message.PairWith(from));
+                    return;
+                }
+                else
+                {
+                    if (this.currentEpoch != p.Timestamp[0])
+                    {
+                        throw new ApplicationException("Out of order");
+                    }
+                }
+            }
             this.vertex.PushEventTime(message.time);
 
             if (this.LoggingEnabled)
@@ -347,11 +437,19 @@ namespace Microsoft.Research.Naiad.Dataflow
         public ActionReceiver(Vertex<T> vertex, Action<Message<S, T>> messagecallback)
             : base(vertex)
         {
+            if (this.nonSelective)
+            {
+                vertex.notificationCallbacks.Add(this.NotifyCallback);
+            }
             this.MessageCallback = (m, u) => messagecallback(m);
         }
         public ActionReceiver(Vertex<T> vertex, Action<S, T> recordcallback)
             : base(vertex)
         {
+            if (this.nonSelective)
+            {
+                vertex.notificationCallbacks.Add(this.NotifyCallback);
+            }
             this.MessageCallback = ((m, u) => { for (int i = 0; i < m.length; i++) recordcallback(m.payload[i], m.time); });
         }
     }
