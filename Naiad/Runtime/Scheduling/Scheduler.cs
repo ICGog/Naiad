@@ -785,7 +785,9 @@ namespace Microsoft.Research.Naiad.Scheduling
                         break;
                     }
 
-                    if (itemToRun == workItems.Count || computation.Reachability.CompareTo(workItems[itemToRun].Capability, workItems[i].Capability) > 0)
+                    if (itemToRun == workItems.Count || computation.Reachability.CompareTo(workItems[itemToRun].Capability, workItems[i].Capability) > 0 ||
+                       (workItems[itemToRun].Capability.Equals(workItems[i].Capability) &&
+                        workItems[itemToRun].IsFake && !workItems[i].IsFake))
                     {
                         var valid = false;
 

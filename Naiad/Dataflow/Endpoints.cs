@@ -338,6 +338,7 @@ namespace Microsoft.Research.Naiad.Dataflow
             notifyTime.InitializeFrom(p, p.Timestamp.Length);
             // We can use a dummy time for the event time.
             this.vertex.PushEventTime(default(T));
+            Console.WriteLine("PushEventTime {0} {1}", p, this.currentEpoch);
             this.vertex.NotifyAt(notifyTime, notifyTime, true);
             T poppedTime = this.vertex.PopEventTime();
             if (poppedTime.CompareTo(default(T)) != 0)
@@ -349,6 +350,7 @@ namespace Microsoft.Research.Naiad.Dataflow
         private void NotifyCallback(T t)
         {
             Pointstamp p = t.ToPointstamp(this.vertex.Stage.StageId);
+            Console.WriteLine("Notified {0}", p);
             for (int i=1; i<p.Timestamp.Length; ++i)
             {
                 if (p.Timestamp[i] != Int32.MaxValue - 1) {
@@ -356,14 +358,33 @@ namespace Microsoft.Research.Naiad.Dataflow
                 }
             }
             int releaseEpoch = p.Timestamp.a + 1;
+            List<Pair<Message<S, T>, ReturnAddress>> buffer = null;
             if (this.buffered.ContainsKey(releaseEpoch))
             {
-                var b = this.buffered[releaseEpoch];
+                buffer = this.buffered[releaseEpoch];
                 this.buffered.Remove(releaseEpoch);
-                foreach (var payload in b)
+            }
+
+            if (this.buffered.Count == 0)
+            {
+                Console.WriteLine("Reset {0}", p);
+                this.currentEpoch = -1;
+            }
+            else
+            {
+                this.currentEpoch = releaseEpoch;
+                p.Timestamp.a = releaseEpoch;
+                this.MakeNonSelectiveNotification(p);
+            }
+
+            if (buffer != null)
+            {
+                foreach (var payload in buffer)
                 {
                     var message = payload.First;
                     var from = payload.Second;
+                    Pointstamp pp = message.time.ToPointstamp(this.vertex.Stage.StageId);
+                    Console.WriteLine("Releasing {0} {1} {2}", pp, from.StageID, from.VertexID);
                     this.vertex.PushEventTime(message.time);
                     if (this.LoggingEnabled)
                         this.logger.LogMessage(message, from);
@@ -374,22 +395,19 @@ namespace Microsoft.Research.Naiad.Dataflow
                         throw new ApplicationException("Time stack mismatch");
                     }
                 }
+                p.Timestamp.a = releaseEpoch;
+                Console.WriteLine("Updating holds -1 for {0} {1}", p, releaseEpoch);
+                this.vertex.UpdateHoldsForFrontier(FTFrontier.FromPointstamps(new Pointstamp[]{p}), -1);
             }
-            if (this.buffered.Count == 0)
-            {
-                this.currentEpoch = -1;
-            }
-            else
-            {
-                ++p.Timestamp.a;
-                this.MakeNonSelectiveNotification(p);
-            }
+
         }
 
         public override void OnReceive(Message<S, T> message, ReturnAddress from)
         {
-            if (this.nonSelective)
-            {
+          Pointstamp myp = message.time.ToPointstamp(this.vertex.Stage.StageId);
+          Console.WriteLine("Received {0} {1} {2}", myp, from.StageID, from.VertexID);
+          if (this.nonSelective)
+          {
                 Pointstamp p = message.time.ToPointstamp(this.vertex.Stage.StageId);
                 if (this.currentEpoch == -1)
                 {
@@ -397,11 +415,13 @@ namespace Microsoft.Research.Naiad.Dataflow
                     {
                         throw new ApplicationException("Buffered entries");
                     }
+
                     this.currentEpoch = p.Timestamp.a;
                     for (int i = 1; i < p.Timestamp.Length; ++i)
                     {
                         p.Timestamp[i] = Int32.MaxValue - 1;
                     }
+                    Console.WriteLine("Bumping time to {0}", p);
                     this.MakeNonSelectiveNotification(p);
                 }
                 else if (this.currentEpoch < p.Timestamp.a)
@@ -409,7 +429,16 @@ namespace Microsoft.Research.Naiad.Dataflow
                     if (!buffered.ContainsKey(p.Timestamp.a))
                     {
                         buffered[p.Timestamp.a] = new List<Pair<Message<S, T>, ReturnAddress>>();
+                        Console.WriteLine("Updating holds +1 for {0}", p);
+                        Pointstamp tp = message.time.ToPointstamp(this.vertex.Stage.StageId);
+                        for (int i = 1; i < p.Timestamp.Length; ++i)
+                        {
+                            tp.Timestamp[i] = Int32.MaxValue - 1;
+                        }
+                        this.vertex.UpdateHoldsForFrontier(FTFrontier.FromPointstamps(new Pointstamp[]{tp}), 1);
+//                        this.MakeNonSelectiveNotification(p);
                     }
+                    Console.WriteLine("Bufferring {0} {1}", p, buffered.Count);
                     buffered[p.Timestamp.a].Add(message.PairWith(from));
                     return;
                 }
@@ -421,6 +450,7 @@ namespace Microsoft.Research.Naiad.Dataflow
                     }
                 }
             }
+            Console.WriteLine("Letting through {0}", message.time.ToPointstamp(this.vertex.Stage.StageId));
             this.vertex.PushEventTime(message.time);
 
             if (this.LoggingEnabled)
