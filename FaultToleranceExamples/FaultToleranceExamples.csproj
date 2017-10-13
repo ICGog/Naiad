@@ -63,6 +63,15 @@
     <Reference Include="Microsoft.Azure.KeyVault.Core">
       <HintPath>..\packages\Microsoft.Azure.KeyVault.Core.1.0.0\lib\net40\Microsoft.Azure.KeyVault.Core.dll</HintPath>
     </Reference>
+    <Reference Include="StackExchange.Redis">
+      <HintPath>..\packages\StackExchange.Redis.1.2.4\lib\net45\StackExchange.Redis.dll</HintPath>
+    </Reference>
+    <Reference Include="Confluent.Kafka">
+      <HintPath>..\packages\Confluent.Kafka.0.11.0\lib\net45\Confluent.Kafka.dll</HintPath>
+    </Reference>
+    <Reference Include="YamlDotNet">
+      <HintPath>..\packages\YamlDotNet.4.2.2\lib\portable-net45+netcore45+wpa81+wp8+MonoAndroid1+MonoTouch1\YamlDotNet.dll</HintPath>
+    </Reference>
     <Reference Include="Microsoft.Data.Edm, Version=5.7.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
       <HintPath>..\packages\Microsoft.Data.Edm.5.7.0\lib\net40\Microsoft.Data.Edm.dll</HintPath>
@@ -105,6 +114,8 @@
     <Compile Include="HdfsStreamSequence.cs" />
     <Compile Include="ConnectedComponents.cs" />
     <Compile Include="ComplexFTWorkflow.cs" />
+    <Compile Include="YCSB.cs" />
+    <Compile Include="KafkaConsumer.cs" />
     <Compile Include="MicroUpdateFrontiers.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="ReplayComplexFTWorkflow.cs" />

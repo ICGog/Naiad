@@ -62,6 +62,7 @@ namespace FaultToleranceExamples
       examples.Add("replay-scratch-complex-ft-workflow", new ReplayScratchComplexFTWorkflow.ReplayScratchComplexFTWorkflow());
       examples.Add("replay-incremental-complex-ft-workflow", new ReplayIncrementalComplexFTWorkflow.ReplayIncrementalComplexFTWorkflow());
       examples.Add("connected-components", new ConnectedComponents.ConnectedComponents());
+      examples.Add("ycsb", new YCSB.YCSB());
       if (args.Length == 0 || !examples.ContainsKey(args[0].ToLower()))
       {
         Console.Error.WriteLine("First argument not found in list of examples");
