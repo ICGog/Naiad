@@ -26,16 +26,17 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 
+
 using Microsoft.Research.Naiad;
 using Microsoft.Research.Naiad.Dataflow;
-using Microsoft.Research.Naiad.Input;
 using Microsoft.Research.Naiad.Dataflow.StandardVertices;
+using Microsoft.Research.Naiad.Input;
 using Microsoft.Research.Naiad.Runtime.Progress;
 using Microsoft.Research.Naiad.Runtime.FaultTolerance;
 using Microsoft.Research.Naiad.FaultToleranceManager;
 using Microsoft.Research.Naiad.Frameworks.DifferentialDataflow;
 using Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.Operators;
-using Microsoft.Research.Naiad.Frameworks.Lindi;
+
 using Microsoft.Research.Naiad.Serialization;
 using Microsoft.Research.Naiad.Diagnostics;
 
@@ -45,122 +46,12 @@ using StackExchange.Redis;
 
 using YamlDotNet.RepresentationModel;
 
-namespace FaultToleranceExamples.YCSB
+namespace FaultToleranceExamples.YCSBDD
 {
 
-  public static class ExtensionMethods
+  public class YCSBDD : Example
   {
 
-    public static Stream<Pair<string, string>, T> RedisQuery<R, T>(this Stream<R, T> input, ConnectionMultiplexer redis)
-      where R : YCSB.IAdEvent
-      where T : Time<T>
-    {
-      return Foundry.NewUnaryStage(input, (i, s) => new RedisQueryVertex<R, T>(i, s, redis),
-                                   x => x.GetHashCode(), x => x.GetHashCode(), "RedisQuery");
-    }
-
-    public class RedisQueryVertex<R, T> : UnaryVertex<R, Pair<string, string>, T>
-      where R : YCSB.IAdEvent
-      where T : Time<T>
-    {
-      private IDatabase redisDB;
-      private Dictionary<string, string> adCampaign;
-
-      public override void OnReceive(Microsoft.Research.Naiad.Dataflow.Message<R, T> message) {
-        var output = this.Output.GetBufferForTime(message.time);
-        for (int i = 0; i < message.length; i++)
-        {
-          string campaignId = execute(message.payload[i].AdId);
-          if (campaignId != null)
-          {
-            string eventTime = message.payload[i].EventTime;
-            // Output: (campaign_id, event_time)
-            output.Send(new Pair<string, string>(campaignId, eventTime));
-          }
-        }
-      }
-
-      public string execute(string adId)
-      {
-        if (adCampaign.ContainsKey(adId)) {
-          return adCampaign[adId];
-        } else {
-          string campaign_id = redisDB.StringGet(adId);
-          if (campaign_id != null) {
-            adCampaign[adId] = campaign_id;
-          }
-          return campaign_id;
-        }
-      }
-
-      public override void OnNotify(T time) {
-      }
-
-      public RedisQueryVertex(int index, Stage<T> stage, ConnectionMultiplexer redis) : base(index, stage) {
-        adCampaign = new Dictionary<string, string>();
-        redisDB = redis.GetDatabase();
-      }
-    }
-
-    public static Stream<string, T> CampaignProcessor<T>(this Stream<Pair<Pair<string, long>, long>, T> input, ConnectionMultiplexer redis)
-      where T: Time<T>
-    {
-      return Foundry.NewUnaryStage(input, (i, s) => new CampaignProcessorVertex<T>(i, s, redis),
-                                   x => x.GetHashCode(), x => x.GetHashCode(), "CampaignProcessor");
-    }
-
-    public class CampaignProcessorVertex<T> : UnaryVertex<Pair<Pair<string, long>, long>, string, T>
-      where T: Time<T>
-    {
-      private IDatabase redisDB;
-      private DateTime dt1970;
-
-      public override void OnReceive(Microsoft.Research.Naiad.Dataflow.Message<Pair<Pair<string, long>, long>, T> message) {
-        var output = this.Output.GetBufferForTime(message.time);
-        for (int i = 0; i < message.length; i++)
-        {
-          string campaignId = message.payload[i].First.First;
-          long campaignTime = message.payload[i].First.Second;
-          long campaignCount = message.payload[i].Second;
-          long timeDiff = writeWindow(campaignId, campaignTime, campaignCount);
-          output.Send(timeDiff.ToString());
-        }
-      }
-
-      public override void OnNotify(T time) {
-      }
-
-      public CampaignProcessorVertex(int index, Stage<T> stage, ConnectionMultiplexer redis) : base(index, stage) {
-        redisDB = redis.GetDatabase();
-        dt1970 = new DateTime(1970, 1, 1);
-      }
-
-      private long writeWindow(string campaignId, long campaignTime, long campaignCount)
-      {
-        string cTimeStr = campaignTime.ToString();
-        string windowUUID = redisDB.HashGet(campaignId, campaignTime);
-        if (windowUUID == null) {
-          windowUUID = System.Guid.NewGuid().ToString();
-          redisDB.HashSet(campaignId, cTimeStr, windowUUID);
-          string windowListUUID = redisDB.HashGet(campaignId, "windows");
-          if (windowListUUID == null) {
-            windowListUUID = System.Guid.NewGuid().ToString();
-            redisDB.HashSet(campaignId, "windows", windowListUUID);
-          }
-          redisDB.ListLeftPush(windowListUUID, cTimeStr);
-        }
-        TimeSpan span = DateTime.UtcNow - dt1970;
-        long curTime = Convert.ToInt64(span.TotalMilliseconds);
-        redisDB.HashIncrement(windowUUID, "seen_count", campaignCount);
-        redisDB.HashSet(windowUUID, "time_updated", curTime.ToString());
-        return curTime - campaignTime;
-      }
-    }
-
-  }
-
-  public class YCSB : Example
-  {
     private class FileLogStream : LogStream
     {
       private StreamWriter log;
@@ -195,57 +86,6 @@ namespace FaultToleranceExamples.YCSB
         var flush = new System.Threading.Thread(
                       new System.Threading.ThreadStart(() => this.FlushFileThread()));
         flush.Start();
-      }
-    }
-
-    public struct Window : IEquatable<Window>
-    {
-      public string timestamp;
-      public long seenCount;
-
-      public bool Equals(Window other)
-      {
-        return timestamp.Equals(other.timestamp);
-      }
-
-      public override int GetHashCode()
-      {
-        return 31 + timestamp.GetHashCode();
-      }
-
-      public override string ToString()
-      {
-        return "{ time: " + timestamp + ", seen: " + seenCount + " }";
-      }
-    }
-
-    public struct CampaignWindowPair : IEquatable<CampaignWindowPair>
-    {
-      public string campaign;
-      public Window window;
-
-      public CampaignWindowPair(string campaign, Window window)
-      {
-        this.campaign = campaign;
-        this.window = window;
-      }
-
-      public bool Equals(CampaignWindowPair other)
-      {
-        return campaign.Equals(other.campaign) &&
-          window.Equals(other.window);
-      }
-
-      public override int GetHashCode()
-      {
-        int result = 31 + campaign.GetHashCode();
-        result = result * 31 + window.GetHashCode();
-        return result;
-      }
-
-      public override string ToString()
-      {
-        return "{ " + campaign + " : " + window.ToString() + " }";
       }
     }
 
@@ -338,8 +178,8 @@ namespace FaultToleranceExamples.YCSB
     public void Execute(string[] args)
     {
       this.config = Configuration.FromArgs(ref args);
-      this.config.MaxLatticeInternStaleTimes = 10;
-      this.config.DefaultCheckpointInterval = 1000;
+      this.config.MaxLatticeInternStaleTimes = 50;
+//      this.config.DefaultCheckpointInterval = 1000;
 
       string ycsbConfigFile = "";
       string logPrefix = "/tmp/falkirk/";
@@ -377,6 +217,7 @@ namespace FaultToleranceExamples.YCSB
       }
 
       var conf = findAndReadConfigFile(ycsbConfigFile, true);
+
       string kafkaBrokers = getKafkaBrokers(conf);
       string kafkaTopic = conf["kafka.topic"].ToString();
       int kafkaPartitions = Int32.Parse(conf["kafka.partitions"].ToString());
@@ -397,21 +238,19 @@ namespace FaultToleranceExamples.YCSB
 
       using (var computation = NewComputation.FromConfig(this.config))
       {
-        var kafkaInput = new BatchedDataSource<string>();
-        var kafkaInputStream = computation.NewInput(kafkaInput);
-
-        Stream<Pair<string, string>, Epoch> campaignsTime = kafkaInputStream
+        var kafkaInput = computation.NewInputCollection<string>();
+        var campaignsTime = kafkaInput
           .Select(jsonString => Newtonsoft.Json.JsonConvert.DeserializeObject<AdEvent>(jsonString))
           .Where(adEvent => adEvent.event_type.Equals("view"))
           .Select(adEvent => new AdEventProjected(adEvent.ad_id, adEvent.event_time))
-          .RedisQuery<AdEventProjected, Epoch>(redis);
+          .RedisCampaign(adEvent => adEvent.AdId, adEvent => adEvent.EventTime,
+                         (campaignId, eventTime) => campaignId.PairWith(eventTime),
+                         redis);
 
         var result = campaignsTime
           .Select(campaignTime => campaignTime.First.PairWith(10000 * (Convert.ToInt64(campaignTime.Second) / 10000)))
-          .Count()
-          .CampaignProcessor(redis);
-
-        var output = result.Subscribe(l => { foreach (var x in l) Console.WriteLine(x); });
+          .Count(x => x)
+          .RedisCampaignProcessor<string>(x => x.First.First, x => x.First.Second, x => x.Second, redis);
 
         // if (computation.Configuration.ProcessID == 0)
         // {
@@ -420,14 +259,31 @@ namespace FaultToleranceExamples.YCSB
         //                      managerWorkerCount, minimalLogging);
         // }
 
+        var output = result.Subscribe(l => { foreach (var x in l) Console.WriteLine(x); });
+
         computation.Activate();
+
         if (computation.Configuration.ProcessID == 0)
         {
-          KafkaConsumer kafkaConsumer = new KafkaConsumer(kafkaBrokers, kafkaTopic);
-//          var thread = new System.Threading.Thread(new System.Threading.ThreadStart(() => kafkaConsumer.StartConsumer(kafkaInput, computation)));
-//          thread.Start();
+          YCSB.KafkaConsumer kafkaConsumer = new YCSB.KafkaConsumer(kafkaBrokers, kafkaTopic);
           kafkaConsumer.StartConsumer(kafkaInput, computation);
         }
+
+        // StreamReader file = new StreamReader("/home/srguser/falkirk/Naiad/ad_events.in");
+        // string line;
+        // int z = 0;
+        // List<string> evs = new List<string>();
+        // while((line = file.ReadLine()) != null) {
+        //   z++;
+        //   if (z % 10000 == 0)
+        //   {
+        //     kafkaInput.OnNext(evs);
+        //     evs.Clear();
+        //   }
+        //   evs.Add(line);
+        // }
+
+        kafkaInput.OnCompleted();
 
         computation.Join();
 

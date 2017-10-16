@@ -43,6 +43,8 @@ using Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.OperatorImplement
 using Microsoft.Research.Naiad;
 using Microsoft.Research.Naiad.Dataflow;
 
+using StackExchange.Redis;
+
 namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow
 {
     internal static class ExtensionHelpers
@@ -280,6 +282,41 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow
         }
 
         #endregion Select/Where/SelectMany
+
+        #region YCSB
+        public Collection<R2, T> RedisCampaign<R2>(Expression<Func<R, string>> adFunc,
+                                                   Expression<Func<R, string>> timeFunc,
+                                                   Expression<Func<string, string, R2>> resultFunc,
+                                                   ConnectionMultiplexer redis)
+          where R2: IEquatable<R2>
+        {
+          if (adFunc == null)
+            throw new ArgumentNullException("adFunc");
+          if (timeFunc == null)
+            throw new ArgumentNullException("timeFunc");
+          if (resultFunc == null)
+            throw new ArgumentNullException("resultFunc");
+
+          return this.Manufacture<R2>((i, v) => new Operators.RedisCampaignVertex<R, T, R2>(i, v, adFunc, timeFunc, resultFunc, redis), null, null, false, "RedisCampaign");
+        }
+
+        public Collection<R2, T> RedisCampaignProcessor<R2>(Expression<Func<R, string>> campaignFunc,
+                                                            Expression<Func<R, long>> timeFunc,
+                                                            Expression<Func<R, long>> countFunc,
+                                                            ConnectionMultiplexer redis)
+          where R2: IEquatable<R2>
+        {
+          if (campaignFunc == null)
+            throw new ArgumentNullException("campaignFunc");
+          if (timeFunc == null)
+            throw new ArgumentNullException("timeFunc");
+          if (countFunc == null)
+            throw new ArgumentNullException("countFunc");
+
+          return this.Manufacture<R2>((i, v) => new Operators.RedisCampaignProcessorVertex<R, T, R2>(i, v, campaignFunc, timeFunc, countFunc, redis), null, null, false, "RedisCampaignProcessor");
+        }
+
+        #endregion YCSB
 
         #region GroupBy/CoGroupBy
 

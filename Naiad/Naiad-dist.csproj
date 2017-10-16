@@ -119,6 +119,8 @@
     <Compile Include="Operators\Union.cs" />
     <Compile Include="Scheduling\Version.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Operators\RedisCampaign.cs" />
+    <Compile Include="Operators\RedisCampaignProcessor.cs" />
     <Compile Include="Operators\Select.cs" />
     <Compile Include="Channels\Channel.cs" />
     <Compile Include="Operators\Where.cs" />

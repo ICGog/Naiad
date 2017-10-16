@@ -32,6 +32,8 @@ using Microsoft.Research.Naiad;
 using Microsoft.Research.Naiad.Runtime.FaultTolerance;
 using Microsoft.Research.Naiad.Dataflow;
 
+using StackExchange.Redis;
+
 namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow
 {
     /// <summary>
@@ -225,6 +227,20 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow
             where TOutput : IEquatable<TOutput>;
 
         #endregion Select/Where/SelectMany
+
+        #region YCSB
+        Collection<TOutput, TTime> RedisCampaign<TOutput>(Expression<Func<TRecord, string>> adFunc,
+                                                          Expression<Func<TRecord, string>> timeFunc,
+                                                          Expression<Func<string, string, TOutput>> resultFunc,
+                                                          ConnectionMultiplexer redis)
+          where TOutput : IEquatable<TOutput>;
+
+        Collection<TOutput, TTime> RedisCampaignProcessor<TOutput>(Expression<Func<TRecord, string>> campaignFunc,
+                                                                   Expression<Func<TRecord, long>> timeFunc,
+                                                                   Expression<Func<TRecord, long>> countFunc,
+                                                                   ConnectionMultiplexer redis)
+          where TOutput : IEquatable<TOutput>;
+        #endregion YCSB
 
         #region GroupBy/CoGroupBy
         /// <summary>

@@ -20,11 +20,13 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using Confluent.Kafka;
 using Confluent.Kafka.Serialization;
 
+using Microsoft.Research.Naiad.Dataflow;
 using Microsoft.Research.Naiad.Frameworks.DifferentialDataflow;
 using Microsoft.Research.Naiad.Input;
 using Microsoft.Research.Naiad;
@@ -34,6 +36,9 @@ namespace FaultToleranceExamples.YCSB
   public class KafkaConsumer
   {
     private Consumer<Null, string> consumer;
+//    private StreamWriter file;
+    private long curWindow;
+    private long windowDuration = 10000;
 
     public KafkaConsumer(string brokerList, string topic)
     {
@@ -43,6 +48,8 @@ namespace FaultToleranceExamples.YCSB
           { "group.id", "myGroup" },
           { "auto.offset.reset", "earliest" }
         };
+      curWindow = 0;
+//      file = new StreamWriter("/home/srguser/falkirk/Naiad/ad_events.in");
       this.consumer = new Consumer<Null, string>(config, null, new StringDeserializer(Encoding.UTF8));
       consumer.Assign(new List<TopicPartitionOffset> { new TopicPartitionOffset(topic, 0, 0)});
     }
@@ -54,20 +61,61 @@ namespace FaultToleranceExamples.YCSB
       List<string> input = new List<string>();
       while (true)
       {
-        Message<Null, string> msg;
-        if (consumer.Consume(out msg, TimeSpan.FromMilliseconds(100)))
+        Confluent.Kafka.Message<Null, string> msg;
+        if (consumer.Consume(out msg, TimeSpan.FromMilliseconds(0.01)))
         {
           i++;
-          if (i % 1000 == 0)
-          {
+          long eventWindow = Convert.ToInt64(Newtonsoft.Json.JsonConvert.DeserializeObject<YCSB.AdEvent>(msg.Value).event_time) / windowDuration;
+          if (curWindow == 0) {
+            curWindow = eventWindow;
+          }
+          if (eventWindow <= curWindow) {
+            input.Add(msg.Value);
+          } else {
             kafkaInput.OnNext(input);
             computation.Sync(epoch);
             input.Clear();
+            input.Add(msg.Value);
+            curWindow = eventWindow;
             epoch++;
           }
-          input.Add(msg.Value);
+          // if (i % 1000 == 0)
+          // {
+          //   kafkaInput.OnNext(input);
+          //   computation.Sync(epoch);
+          //   input.Clear();
+          //   epoch++;
+          // }
+          // input.Add(msg.Value);
         }
       }
     }
+
+    public void StartConsumer(InputCollection<string> kafkaInput, Computation computation)
+    {
+      List<string> input = new List<string>();
+      while (true)
+      {
+        Confluent.Kafka.Message<Null, string> msg;
+        if (consumer.Consume(out msg, TimeSpan.FromMilliseconds(0.01)))
+        {
+          long eventWindow = Convert.ToInt64(Newtonsoft.Json.JsonConvert.DeserializeObject<YCSB.AdEvent>(msg.Value).event_time) / windowDuration;
+          if (curWindow == 0) {
+            curWindow = eventWindow;
+          }
+          if (eventWindow <= curWindow)
+          {
+            input.Add(msg.Value);
+          } else {
+            Console.WriteLine("Adding " + input.Count);
+            kafkaInput.OnNext(input);
+            input.Clear();
+            input.Add(msg.Value);
+            curWindow = eventWindow;
+          }
+        }
+      }
+    }
+
   }
 }

@@ -72,6 +72,11 @@
     <CodeAnalysisRuleSet>MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="StackExchange.Redis">
+      <HintPath>..\..\packages\StackExchange.Redis.1.2.4\lib\net45\StackExchange.Redis.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Xml.Linq" />
@@ -124,6 +129,8 @@
     <Compile Include="Operators\Monitor.cs" />
     <Compile Include="Operators\Print.cs" />
     <Compile Include="Operators\Prioritize.cs" />
+    <Compile Include="Operators\RedisCampaign.cs" />
+    <Compile Include="Operators\RedisCampaignProcessor.cs" />
     <Compile Include="Operators\Select.cs" />
     <Compile Include="Operators\SelectMany.cs" />
     <Compile Include="Operators\Sum.cs" />
