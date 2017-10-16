@@ -70,9 +70,6 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.Operators
       }
     }
 
-    public override void OnNotify(T time) {
-    }
-
     public RedisCampaignVertex(int index, Stage<T> collection,
                                Expression<Func<S, string>> adFunc,
                                Expression<Func<S, string>> timeFunc,

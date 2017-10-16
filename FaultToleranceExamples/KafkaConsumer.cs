@@ -108,6 +108,10 @@ namespace FaultToleranceExamples.YCSB
             input.Add(msg.Value);
           } else {
             Console.WriteLine("Adding " + input.Count);
+            DateTime dt1970 = new DateTime(1970, 1, 1);
+            TimeSpan span = DateTime.UtcNow - dt1970;
+            long curTime = Convert.ToInt64(span.TotalMilliseconds);
+            Console.WriteLine("Window " + eventWindow * 10000 + " current " + curTime);
             kafkaInput.OnNext(input);
             input.Clear();
             input.Add(msg.Value);

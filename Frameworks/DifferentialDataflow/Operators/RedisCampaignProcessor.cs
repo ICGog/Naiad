@@ -46,11 +46,13 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.Operators
     private long windowDuration = 10000;
 
     public override void OnReceive(Message<Weighted<S>, T> message) {
+      this.NotifyAt(message.time);
       var output = this.Output.GetBufferForTime(message.time);
       for (int i = 0; i < message.length; i++)
       {
         string campaignId = this.campaignSelector(message.payload[i].record);
         long campaignTime = this.timeSelector(message.payload[i].record);
+        epochToTime[message.time] = campaignTime;
         long campaignCount = this.countSelector(message.payload[i].record);
         Dictionary<string, long> campaignCache;
         if (cache.TryGetValue(message.time, out campaignCache)) {
@@ -74,13 +76,20 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.Operators
 
     public override void OnNotify(T time) {
       // Flush campaign.
-      long campaignTime = epochToTime[time];
-      foreach (KeyValuePair<string, long> entry in cache[time])
+      long campaignTime;
+      if (epochToTime.TryGetValue(time, out campaignTime))
       {
-        writeWindow(entry.Key, campaignTime, entry.Value);
+        TimeSpan span = DateTime.UtcNow - dt1970;
+        long curTime = Convert.ToInt64(span.TotalMilliseconds);
+        Console.WriteLine("Finished window " + campaignTime + " at " + curTime);
+        foreach (KeyValuePair<string, long> entry in cache[time])
+        {
+          writeWindow(entry.Key, campaignTime, entry.Value);
+        }
+        cache.Remove(time);
+        epochToTime.Remove(time);
       }
-      cache.Remove(time);
-      epochToTime.Remove(time);
+      base.OnNotify(time);
     }
 
     public RedisCampaignProcessorVertex(int index, Stage<T> stage,
