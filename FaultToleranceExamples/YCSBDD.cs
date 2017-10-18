@@ -186,6 +186,9 @@ namespace FaultToleranceExamples.YCSBDD
       bool minimalLogging = false;
       int managerWorkerCount = 4;
       bool nonIncrementalFTManager = false;
+      long loadTargetHz = 100000;
+      long timeSliceLengthMs = 1000;
+      long numElementsToGenerate = 60L * loadTargetHz;
       int i = 1;
       while (i < args.Length)
       {
@@ -209,6 +212,18 @@ namespace FaultToleranceExamples.YCSBDD
           break;
         case "-ycsbconfigfile":
           ycsbConfigFile = args[i + 1];
+          i += 2;
+          break;
+        case "-loadtarget":
+          loadTargetHz = Int64.Parse(args[i + 1]);
+          i += 2;
+          break;
+        case "-timeslice":
+          timeSliceLengthMs = Int64.Parse(args[i + 1]);
+          i += 2;
+          break;
+        case "-numelements":
+          numElementsToGenerate = Int64.Parse(args[i + 1]);
           i += 2;
           break;
         default:
@@ -240,9 +255,6 @@ namespace FaultToleranceExamples.YCSBDD
       {
         var kafkaInput = computation.NewInputCollection<string>();
 
-        long loadTargetHz = 100000;
-        long timeSliceLengthMs = 1000;
-        long numElementsToGenerate = 60L * loadTargetHz;
         YCSBEventGenerator eventGenerator =
           new YCSBEventGenerator(loadTargetHz, timeSliceLengthMs, numElementsToGenerate);
         var campaigns = eventGenerator.getCampaigns();
