@@ -239,13 +239,28 @@ namespace FaultToleranceExamples.YCSBDD
       using (var computation = NewComputation.FromConfig(this.config))
       {
         var kafkaInput = computation.NewInputCollection<string>();
+
+        long loadTargetHz = 100000;
+        long timeSliceLengthMs = 1000;
+        long numElementsToGenerate = 60L * loadTargetHz;
+        YCSBEventGenerator eventGenerator =
+          new YCSBEventGenerator(loadTargetHz, timeSliceLengthMs, numElementsToGenerate);
+        var campaigns = eventGenerator.getCampaigns();
+        Dictionary<string, string> adsToCampaign = new Dictionary<string, string>();
+        foreach (KeyValuePair<string, List<string>> entry in campaigns) {
+          foreach (string ad in entry.Value) {
+            adsToCampaign[ad] = entry.Key;
+          }
+        }
+
+
         var campaignsTime = kafkaInput
           .Select(jsonString => Newtonsoft.Json.JsonConvert.DeserializeObject<AdEvent>(jsonString))
           .Where(adEvent => adEvent.event_type.Equals("view"))
           .Select(adEvent => new AdEventProjected(adEvent.ad_id, adEvent.event_time))
           .RedisCampaign(adEvent => adEvent.AdId, adEvent => adEvent.EventTime,
                          (campaignId, eventTime) => campaignId.PairWith(eventTime),
-                         redis);
+                         redis, adsToCampaign);
 
         var result = campaignsTime
           .Select(campaignTime => campaignTime.First.PairWith(10000 * (Convert.ToInt64(campaignTime.Second) / 10000)))
@@ -263,11 +278,13 @@ namespace FaultToleranceExamples.YCSBDD
 
         computation.Activate();
 
-        if (computation.Configuration.ProcessID == 0)
-        {
-          YCSB.KafkaConsumer kafkaConsumer = new YCSB.KafkaConsumer(kafkaBrokers, kafkaTopic);
-          kafkaConsumer.StartConsumer(kafkaInput, computation);
-        }
+        // if (computation.Configuration.ProcessID == 0)
+        // {
+        //   YCSB.KafkaConsumer kafkaConsumer = new YCSB.KafkaConsumer(kafkaBrokers, kafkaTopic);
+        //   kafkaConsumer.StartConsumer(kafkaInput, computation);
+        // }
+
+        eventGenerator.run(computation.Configuration.Processes, kafkaInput);
 
         // StreamReader file = new StreamReader("/home/srguser/falkirk/Naiad/ad_events.in");
         // string line;

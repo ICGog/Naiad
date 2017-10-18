@@ -74,10 +74,16 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.Operators
                                Expression<Func<S, string>> adFunc,
                                Expression<Func<S, string>> timeFunc,
                                Expression<Func<string, string, R>> resultFunc,
-                               ConnectionMultiplexer redis)
+                               ConnectionMultiplexer redis,
+                               Dictionary<string, string> adsToCampaign)
       : base(index, collection) {
-      adCampaign = new Dictionary<string, string>();
-      redisDB = redis.GetDatabase();
+      if (adsToCampaign != null) {
+        adCampaign = adsToCampaign;
+        redisDB = null;
+      } else {
+        adCampaign = new Dictionary<string, string>();
+        redisDB = redis.GetDatabase();
+      }
       adSelector = adFunc.Compile();
       timeSelector = timeFunc.Compile();
       resultCreator = resultFunc.Compile();

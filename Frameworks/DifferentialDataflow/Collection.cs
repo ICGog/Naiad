@@ -287,7 +287,8 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow
         public Collection<R2, T> RedisCampaign<R2>(Expression<Func<R, string>> adFunc,
                                                    Expression<Func<R, string>> timeFunc,
                                                    Expression<Func<string, string, R2>> resultFunc,
-                                                   ConnectionMultiplexer redis)
+                                                   ConnectionMultiplexer redis,
+                                                   Dictionary<string, string> adsToCampaign)
           where R2: IEquatable<R2>
         {
           if (adFunc == null)
@@ -297,7 +298,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow
           if (resultFunc == null)
             throw new ArgumentNullException("resultFunc");
 
-          return this.Manufacture<R2>((i, v) => new Operators.RedisCampaignVertex<R, T, R2>(i, v, adFunc, timeFunc, resultFunc, redis), null, null, false, "RedisCampaign");
+          return this.Manufacture<R2>((i, v) => new Operators.RedisCampaignVertex<R, T, R2>(i, v, adFunc, timeFunc, resultFunc, redis, adsToCampaign), null, null, false, "RedisCampaign");
         }
 
         public Collection<R2, T> RedisCampaignProcessor<R2>(Expression<Func<R, string>> campaignFunc,
