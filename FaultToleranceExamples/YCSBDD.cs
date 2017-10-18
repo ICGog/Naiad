@@ -286,7 +286,8 @@ namespace FaultToleranceExamples.YCSBDD
         //                      managerWorkerCount, minimalLogging);
         // }
 
-        var output = result.Subscribe(l => { foreach (var x in l) Console.WriteLine(x); });
+//        var output = result.Subscribe(l => { foreach (var x in l) Console.WriteLine(x); });
+        var output = result.Subscribe(l => { });
 
         computation.Activate();
 

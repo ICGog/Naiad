@@ -66,7 +66,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.Operators
           cache[message.time] = new Dictionary<string, long>();
           cache[message.time][campaignId] = campaignCount;
         }
-        long timeDiff = writeWindow(campaignId, campaignTime, campaignCount);
+        // long timeDiff = writeWindow(campaignId, campaignTime, campaignCount);
         // TimeSpan span = DateTime.UtcNow - dt1970;
         // long curTime = Convert.ToInt64(span.TotalMilliseconds);
         // long timeDiff = curTime - campaignTime;
@@ -80,11 +80,13 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.Operators
       if (epochToTime.TryGetValue(time, out campaignTime))
       {
         TimeSpan span = DateTime.UtcNow - dt1970;
-        long curTime = Convert.ToInt64(span.TotalMilliseconds);
-        Console.WriteLine("Finished window " + campaignTime + " at " + curTime);
+        long latency = Convert.ToInt64(span.TotalMilliseconds) - campaignTime - windowDuration;
+//        Console.WriteLine("Finished window " + campaignTime + " at " + curTime);
+        if (latency > 0)
+          Console.WriteLine("Latency: " + latency);
         foreach (KeyValuePair<string, long> entry in cache[time])
         {
-          writeWindow(entry.Key, campaignTime, entry.Value);
+          // writeWindow(entry.Key, campaignTime, entry.Value);
         }
         cache.Remove(time);
         epochToTime.Remove(time);
