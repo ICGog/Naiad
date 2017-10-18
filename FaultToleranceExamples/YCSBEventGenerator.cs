@@ -50,7 +50,8 @@ namespace FaultToleranceExamples.YCSBDD
     private StringBuilder sb = new StringBuilder();
     private string pageID = System.Guid.NewGuid().ToString();
     private string userID = System.Guid.NewGuid().ToString();
-    private String[] eventTypes = { "view", "click", "purchase" };
+    private string[] eventTypes = { "view", "click", "purchase" };
+    private string eventHeader;
     private List<string> ads;
     private Dictionary<string, List<string>> campaigns;
 
@@ -71,6 +72,7 @@ namespace FaultToleranceExamples.YCSBDD
       this.totalEventsToGenerate = totalEventsToGenerate;
       this.dt1970 = new DateTime(1970, 1, 1);
       this.beginTs = getCurrentTime();
+      this.eventHeader = "{\"user_id\":\"" + pageID + "\",\"page_id\":\"" + userID + "\",\"ad_id\":\"";
     }
 
     public Dictionary<string, List<string>> getCampaigns() {
@@ -86,7 +88,7 @@ namespace FaultToleranceExamples.YCSBDD
     private long loadPerTimeslice(long numTasks)
     {
       long messagesPerOperator = this.loadTargetHz / numTasks;
-      return messagesPerOperator / (1000 / this.timeSliceLengthMs);
+      return messagesPerOperator * this.timeSliceLengthMs / 1000;
     }
 
     public void run(long numTasks, InputCollection<string> kafkaInput)
@@ -96,12 +98,25 @@ namespace FaultToleranceExamples.YCSBDD
       if (elementsGenerated == 0) {
         beginTs = getCurrentTime();
       }
+      List<string> input = new List<string>();
+      List<string> preparedAds = new List<string>();
+      for (int i = 0; i < ads.Count; i++)
+      {
+        preparedAds.Add(this.eventHeader + ads[i] +
+                        "\",\"ad_type\":\"banner78\",\"event_type\":\"" +
+                        eventTypes[i % eventTypes.Length]);
+      }
       while (elementsGenerated < totalElementsPerTask) {
         long emitStartTime = getCurrentTime();
         long sliceTs = beginTs + (this.timeSliceLengthMs * (elementsGenerated / elements));
-        List<string> input = new List<string>();
+        input.Clear();
+        string eventTail = "\",\"event_time\":\"" + sliceTs + "\",\"ip_address\":\"1.2.3.4\"}";
         for (int i = 0; i < elements; i++) {
-          input.Add(generateElement(sliceTs));
+          if (adsIdx == ads.Count) {
+            adsIdx = 0;
+          }
+          input.Add(preparedAds[adsIdx++] + eventTail);
+//          input.Add(generateElement(sliceTs));
         }
         Console.WriteLine("Adding " + input.Count);
         kafkaInput.OnNext(input);
@@ -124,15 +139,9 @@ namespace FaultToleranceExamples.YCSBDD
         eventsIdx = 0;
       }
       sb.Clear();
-      sb.Append("{\"user_id\":\"");
-      sb.Append(pageID);
-      sb.Append("\",\"page_id\":\"");
-      sb.Append(userID);
-      sb.Append("\",\"ad_id\":\"");
+      sb.Append(this.eventHeader);
       sb.Append(ads[adsIdx++]);
-      sb.Append("\",\"ad_type\":\"");
-      sb.Append("banner78");
-      sb.Append("\",\"event_type\":\"");
+      sb.Append("\",\"ad_type\":\"banner78\",\"event_type\":\"");
       sb.Append(eventTypes[eventsIdx++]);
       sb.Append("\",\"event_time\":\"");
       sb.Append(sliceTs);
