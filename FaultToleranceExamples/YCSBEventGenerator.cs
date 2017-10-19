@@ -41,6 +41,8 @@ using Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.Operators;
 using Microsoft.Research.Naiad.Serialization;
 using Microsoft.Research.Naiad.Diagnostics;
 
+using StackExchange.Redis;
+
 namespace FaultToleranceExamples.YCSBDD
 {
   public class YCSBEventGenerator
@@ -75,6 +77,18 @@ namespace FaultToleranceExamples.YCSBDD
       this.eventHeader = "{\"user_id\":\"" + pageID + "\",\"page_id\":\"" + userID + "\",\"ad_id\":\"";
     }
 
+    public void prepareRedis(ConnectionMultiplexer redis)
+    {
+      IDatabase redisDB = redis.GetDatabase();
+      foreach (KeyValuePair<string, List<string>> entry in this.campaigns) {
+        string campaign = entry.Key;
+        redisDB.SetAdd("campaigns", campaign);
+        foreach (string ad in entry.Value) {
+          redisDB.StringSet(ad, campaign);
+        }
+      }
+    }
+
     public Dictionary<string, List<string>> getCampaigns() {
       return campaigns;
     }
@@ -106,6 +120,8 @@ namespace FaultToleranceExamples.YCSBDD
           "\",\"ad_type\":\"banner78\",\"event_type\":\"" +
           eventTypes[i % eventTypes.Length];
       }
+      Thread.Sleep((int)((beginTs / 10000) * 10000 + 20000 - beginTs));
+      beginTs = (beginTs / 10000) * 10000 + 20000;
       while (elementsGenerated < totalElementsPerTask) {
         long emitStartTime = getCurrentTime();
         long sliceTs = beginTs + (this.timeSliceLengthMs * (elementsGenerated / elements));

@@ -86,7 +86,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.Operators
           Console.WriteLine("Latency: " + latency);
         foreach (KeyValuePair<string, long> entry in cache[time])
         {
-          // writeWindow(entry.Key, campaignTime, entry.Value);
+          writeWindow(entry.Key, campaignTime, entry.Value);
         }
         cache.Remove(time);
         epochToTime.Remove(time);

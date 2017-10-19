@@ -258,6 +258,11 @@ namespace FaultToleranceExamples.YCSBDD
         YCSBEventGenerator eventGenerator =
           new YCSBEventGenerator(loadTargetHz, timeSliceLengthMs, numElementsToGenerate);
         var campaigns = eventGenerator.getCampaigns();
+
+        if (computation.Configuration.ProcessID == 0) {
+          eventGenerator.prepareRedis(redis);
+        }
+
         Dictionary<string, string> adsToCampaign = new Dictionary<string, string>();
         foreach (KeyValuePair<string, List<string>> entry in campaigns) {
           foreach (string ad in entry.Value) {
