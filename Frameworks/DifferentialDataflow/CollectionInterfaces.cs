@@ -235,6 +235,11 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow
                                                           ConnectionMultiplexer redis,
                                                           Dictionary<string, string> adsToCampaign)
           where TOutput : IEquatable<TOutput>;
+        Collection<TOutput, TTime> RedisCampaign2<TOutput>(Expression<Func<TRecord, string>> adFunc,
+                                                           Expression<Func<string, string, TOutput>> resultFunc,
+                                                           Dictionary<string, string> adsToCampaign)
+          where TOutput : IEquatable<TOutput>;
+
 
         Collection<TOutput, TTime> RedisCampaignProcessor<TOutput>(Expression<Func<TRecord, string>> campaignFunc,
                                                                    Expression<Func<TRecord, long>> timeFunc,

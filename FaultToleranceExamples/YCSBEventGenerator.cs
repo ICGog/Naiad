@@ -98,28 +98,31 @@ namespace FaultToleranceExamples.YCSBDD
       if (elementsGenerated == 0) {
         beginTs = getCurrentTime();
       }
-      List<string> input = new List<string>();
-      List<string> preparedAds = new List<string>();
+      string[] input = new string[elements];
+      string[] preparedAds = new string[ads.Count];
       for (int i = 0; i < ads.Count; i++)
       {
-        preparedAds.Add(this.eventHeader + ads[i] +
-                        "\",\"ad_type\":\"banner78\",\"event_type\":\"" +
-                        eventTypes[i % eventTypes.Length]);
+        preparedAds[i] = this.eventHeader + ads[i] +
+          "\",\"ad_type\":\"banner78\",\"event_type\":\"" +
+          eventTypes[i % eventTypes.Length];
       }
       while (elementsGenerated < totalElementsPerTask) {
         long emitStartTime = getCurrentTime();
         long sliceTs = beginTs + (this.timeSliceLengthMs * (elementsGenerated / elements));
-        input.Clear();
         string eventTail = "\",\"event_time\":\"" + sliceTs + "\",\"ip_address\":\"1.2.3.4\"}";
         for (int i = 0; i < elements; i++) {
           if (adsIdx == ads.Count) {
             adsIdx = 0;
           }
-          input.Add(preparedAds[adsIdx++] + eventTail);
+          input[i] = preparedAds[adsIdx++] + eventTail;
 //          input.Add(generateElement(sliceTs));
         }
-        Console.WriteLine("Adding " + input.Count);
+        long addingTime = getCurrentTime();
+        Console.WriteLine("Adding " + input.Length);
+        Console.WriteLine("Adding took " + (addingTime - emitStartTime).ToString());
         kafkaInput.OnNext(input);
+        long onNextTime = getCurrentTime() - addingTime;
+        Console.WriteLine("OnNext took " + onNextTime);
         elementsGenerated += elements;
         long emitEndTime = getCurrentTime();
         if (emitEndTime < (sliceTs + this.timeSliceLengthMs)) {

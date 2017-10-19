@@ -265,6 +265,10 @@ namespace FaultToleranceExamples.YCSBDD
           }
         }
 
+        // var result = kafkaInput
+        //   .RedisCampaign2(x => x, (campaignId, eventTime) => campaignId.PairWith(10000 * (Convert.ToInt64(eventTime) / 10000)), adsToCampaign)
+        //   .Count(x => x)
+        //   .RedisCampaignProcessor<string>(x => x.First.First, x => x.First.Second, x => x.Second, redis);
 
         var campaignsTime = kafkaInput
           .Select(jsonString => Newtonsoft.Json.JsonConvert.DeserializeObject<AdEvent>(jsonString))
@@ -286,8 +290,7 @@ namespace FaultToleranceExamples.YCSBDD
         //                      managerWorkerCount, minimalLogging);
         // }
 
-//        var output = result.Subscribe(l => { foreach (var x in l) Console.WriteLine(x); });
-        var output = result.Subscribe(l => { });
+//        var output = result.Subscribe(l => { });
 
         computation.Activate();
 

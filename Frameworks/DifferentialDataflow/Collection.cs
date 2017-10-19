@@ -301,6 +301,17 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow
           return this.Manufacture<R2>((i, v) => new Operators.RedisCampaignVertex<R, T, R2>(i, v, adFunc, timeFunc, resultFunc, redis, adsToCampaign), null, null, false, "RedisCampaign");
         }
 
+        public Collection<R2, T> RedisCampaign2<R2>(Expression<Func<R, string>> adFunc,
+                                                    Expression<Func<string, string, R2>> resultFunc,
+                                                    Dictionary<string, string> adsToCampaign)
+          where R2: IEquatable<R2>
+        {
+          if (resultFunc == null)
+            throw new ArgumentNullException("resultFunc");
+
+          return this.Manufacture<R2>((i, v) => new Operators.RedisCampaignVertex2<R, T, R2>(i, v, adFunc, resultFunc, adsToCampaign), null, null, false, "RedisCampaign2");
+        }
+
         public Collection<R2, T> RedisCampaignProcessor<R2>(Expression<Func<R, string>> campaignFunc,
                                                             Expression<Func<R, long>> timeFunc,
                                                             Expression<Func<R, long>> countFunc,
