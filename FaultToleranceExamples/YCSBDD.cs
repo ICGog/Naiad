@@ -49,6 +49,19 @@ using YamlDotNet.RepresentationModel;
 namespace FaultToleranceExamples.YCSBDD
 {
 
+  public static class ExtensionMethods
+  {
+
+    public static Stream<string, T> AdVertex<T>(this Stream<long, T> stream,
+                                                InputCollection<string> input,
+                                                string[] preparedAds,
+                                                long numEventsPerEpoch)
+      where T : Time<T>
+    {
+      return stream.NewUnaryStage<long, string, T>((i, s) => new YCSBDD.AdVertex<T>(i, s, input, preparedAds, numEventsPerEpoch), null, null, "AdVertex");
+    }
+  }
+
   public class YCSBDD : Example
   {
 
@@ -173,6 +186,40 @@ namespace FaultToleranceExamples.YCSBDD
       }
     }
 
+    public class AdVertex<T> : UnaryVertex<long, string, T>
+      where T: Time<T>
+    {
+      private string[] preparedAds;
+      private int adsIdx;
+      private long numEventsPerEpoch;
+      private InputCollection<string> input;
+
+      public override void OnReceive(Microsoft.Research.Naiad.Dataflow.Message<long, T> message)
+      {
+        long emitStartTime = getCurrentTime();
+        List<string> adEvents = new List<string>();
+        for (int i = 0; i < this.numEventsPerEpoch; i++) {
+          if (this.adsIdx == this.preparedAds.Length) {
+            this.adsIdx = 0;
+          }
+          adEvents.Add(preparedAds[this.adsIdx++] + "\",\"event_time\":\"" + getCurrentTime() + "\",\"ip_address\":\"1.2.3.4\"}");
+        }
+        input.OnNext(adEvents);
+        long emitEndTime = getCurrentTime();
+        Console.WriteLine("Generating " + this.numEventsPerEpoch + " records took " + (emitEndTime - emitStartTime));
+      }
+
+      public AdVertex(int index, Stage<T> stage,
+                      InputCollection<string> input,
+                      string[] preparedAds, long numEventsPerEpoch) : base(index, stage)
+      {
+        this.input = input;
+        this.preparedAds = preparedAds;
+        this.adsIdx = 0;
+        this.numEventsPerEpoch = numEventsPerEpoch;
+      }
+    }
+
     Configuration config;
 
     public void Execute(string[] args)
@@ -189,6 +236,9 @@ namespace FaultToleranceExamples.YCSBDD
       long loadTargetHz = 100000;
       long timeSliceLengthMs = 1000;
       long numElementsToGenerate = 60L * loadTargetHz;
+      string replayEventsPath = "";
+      bool singleThreadGenerator = false;
+      bool lindiGenerator = false;
       int i = 1;
       while (i < args.Length)
       {
@@ -226,6 +276,18 @@ namespace FaultToleranceExamples.YCSBDD
           numElementsToGenerate = Int64.Parse(args[i + 1]);
           i += 2;
           break;
+        case "-replayevents":
+          replayEventsPath = args[i + 1];
+          i += 2;
+          break;
+        case "-singlethreadgenerator":
+          singleThreadGenerator = true;
+          i++;
+          break;
+        case "-lindigenerator":
+          lindiGenerator = true;
+          i++;
+          break;
         default:
           throw new ApplicationException("Unknown argument " + args[i]);
         }
@@ -251,9 +313,11 @@ namespace FaultToleranceExamples.YCSBDD
 
       ConnectionMultiplexer redis = ConnectionMultiplexer.Connect(redisHost);
 
+
       using (var computation = NewComputation.FromConfig(this.config))
       {
         var kafkaInput = computation.NewInputCollection<string>();
+        long numEventsPerEpoch = loadTargetHz * timeSliceLengthMs / 1000 / computation.Configuration.Processes;
 
         YCSBEventGenerator eventGenerator =
           new YCSBEventGenerator(loadTargetHz, timeSliceLengthMs, numElementsToGenerate);
@@ -275,7 +339,23 @@ namespace FaultToleranceExamples.YCSBDD
         //   .Count(x => x)
         //   .RedisCampaignProcessor<string>(x => x.First.First, x => x.First.Second, x => x.Second, redis);
 
-        var campaignsTime = kafkaInput
+        var windowInput = new BatchedDataSource<long>();
+        Collection<string, Epoch> adEvents;
+        if (!singleThreadGenerator) {
+          if (lindiGenerator) {
+            var windowInputStream = computation.NewInput(windowInput);
+            windowInputStream.AdVertex(kafkaInput, eventGenerator.getPreparedAds(), numEventsPerEpoch);
+            adEvents = kafkaInput;
+          } else {
+            adEvents = kafkaInput
+              .AdEventGenerator((preparedAd, tailAd) => preparedAd + tailAd,
+                                eventGenerator.getPreparedAds(), numEventsPerEpoch);
+          }
+        } else {
+          adEvents = kafkaInput;
+        }
+
+        var campaignsTime = adEvents
           .Select(jsonString => Newtonsoft.Json.JsonConvert.DeserializeObject<AdEvent>(jsonString))
           .Where(adEvent => adEvent.event_type.Equals("view"))
           .Select(adEvent => new AdEventProjected(adEvent.ad_id, adEvent.event_time))
@@ -295,8 +375,6 @@ namespace FaultToleranceExamples.YCSBDD
         //                      managerWorkerCount, minimalLogging);
         // }
 
-//        var output = result.Subscribe(l => { });
-
         computation.Activate();
 
         // if (computation.Configuration.ProcessID == 0)
@@ -305,21 +383,41 @@ namespace FaultToleranceExamples.YCSBDD
         //   kafkaConsumer.StartConsumer(kafkaInput, computation);
         // }
 
-        eventGenerator.run(computation.Configuration.Processes, kafkaInput);
-
-        // StreamReader file = new StreamReader("/home/srguser/falkirk/Naiad/ad_events.in");
-        // string line;
-        // int z = 0;
-        // List<string> evs = new List<string>();
-        // while((line = file.ReadLine()) != null) {
-        //   z++;
-        //   if (z % 10000 == 0)
-        //   {
-        //     kafkaInput.OnNext(evs);
-        //     evs.Clear();
-        //   }
-        //   evs.Add(line);
-        // }
+        if (!singleThreadGenerator) {
+          long numIter = numElementsToGenerate / loadTargetHz * 1000 / timeSliceLengthMs;
+          long beginWindow = getCurrentTime();
+          Thread.Sleep((int)((beginWindow / 10000) * 10000 + 10000 - beginWindow));
+          beginWindow = (beginWindow / 10000) * 10000 + 10000;
+          for (int epoch = 0; epoch < numIter; ++epoch) {
+            if (lindiGenerator) {
+              windowInput.OnNext(beginWindow);
+            } else {
+              kafkaInput.OnNext(beginWindow.ToString());
+            }
+            long sleepTime = timeSliceLengthMs + beginWindow - getCurrentTime();
+            if (sleepTime > 0) {
+              Thread.Sleep((int)sleepTime);
+            } else {
+              Console.WriteLine("Falling behind by " + (-sleepTime) + " with epoch generation");
+            }
+            beginWindow += timeSliceLengthMs;
+          }
+        } else if (!replayEventsPath.Equals("")) {
+          StreamReader file = new StreamReader(replayEventsPath);
+          string line;
+          int lineIndex = 0;
+          List<string> evs = new List<string>();
+          while((line = file.ReadLine()) != null) {
+            lineIndex++;
+            if (lineIndex % 10000 == 0) {
+              kafkaInput.OnNext(evs);
+              evs.Clear();
+            }
+            evs.Add(line);
+          }
+        } else {
+          eventGenerator.run(computation.Configuration.Processes, kafkaInput);
+        }
 
         kafkaInput.OnCompleted();
 
@@ -330,6 +428,13 @@ namespace FaultToleranceExamples.YCSBDD
         //   manager.Join();
         // }
       }
+    }
+
+    public static long getCurrentTime()
+    {
+      var dt1970 = new DateTime(1970, 1, 1);
+      TimeSpan span = DateTime.UtcNow - dt1970;
+      return Convert.ToInt64(span.TotalMilliseconds);
     }
 
     private static string getKafkaBrokers(Dictionary<string, Object> conf) {

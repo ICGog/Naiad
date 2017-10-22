@@ -133,6 +133,7 @@
     <Compile Include="Operators\Monitor.cs" />
     <Compile Include="Operators\Print.cs" />
     <Compile Include="Operators\Prioritize.cs" />
+    <Compile Include="Operators\AdEventGenerator.cs" />
     <Compile Include="Operators\RedisCampaign.cs" />
     <Compile Include="Operators\RedisCampaign2.cs" />
     <Compile Include="Operators\RedisCampaignProcessor.cs" />

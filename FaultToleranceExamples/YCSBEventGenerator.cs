@@ -105,6 +105,18 @@ namespace FaultToleranceExamples.YCSBDD
       return messagesPerOperator * this.timeSliceLengthMs / 1000;
     }
 
+    public string[] getPreparedAds()
+    {
+      string[] preparedAds = new string[ads.Count];
+      for (int i = 0; i < ads.Count; i++)
+      {
+        preparedAds[i] = this.eventHeader + ads[i] +
+          "\",\"ad_type\":\"banner78\",\"event_type\":\"" +
+          eventTypes[i % eventTypes.Length];
+      }
+      return preparedAds;
+    }
+
     public void run(long numTasks, InputCollection<string> kafkaInput)
     {
       long elements = loadPerTimeslice(numTasks);

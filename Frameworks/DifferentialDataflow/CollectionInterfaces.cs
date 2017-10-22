@@ -229,6 +229,10 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow
         #endregion Select/Where/SelectMany
 
         #region YCSB
+        Collection<TOutput, TTime> AdEventGenerator<TOutput>(Expression<Func<string, string, TOutput>> resultFunc,
+                                                             string[] preparedAds,
+                                                             long numEventsPerEpoch)
+          where TOutput : IEquatable<TOutput>;
         Collection<TOutput, TTime> RedisCampaign<TOutput>(Expression<Func<TRecord, string>> adFunc,
                                                           Expression<Func<TRecord, string>> timeFunc,
                                                           Expression<Func<string, string, TOutput>> resultFunc,
