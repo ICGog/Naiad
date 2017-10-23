@@ -49,7 +49,7 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.Operators
           if (this.adsIdx == this.preparedAds.Length) {
             this.adsIdx = 0;
           }
-          string eventTail = "\",\"event_time\":\"" + getCurrentTime() + "\",\"ip_address\":\"1.2.3.4\"}";
+          string eventTail = getCurrentTime() + "\",\"ip_address\":\"1.2.3.4\"}";
           output.Send((this.resultCreator(preparedAds[this.adsIdx++], eventTail)).ToWeighted(1));
         }
         long emitEndTime = getCurrentTime();

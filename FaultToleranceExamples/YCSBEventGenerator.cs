@@ -112,7 +112,7 @@ namespace FaultToleranceExamples.YCSBDD
       {
         preparedAds[i] = this.eventHeader + ads[i] +
           "\",\"ad_type\":\"banner78\",\"event_type\":\"" +
-          eventTypes[i % eventTypes.Length];
+          eventTypes[i % eventTypes.Length] + "\",\"event_time\":\"";
       }
       return preparedAds;
     }
@@ -137,7 +137,7 @@ namespace FaultToleranceExamples.YCSBDD
       while (elementsGenerated < totalElementsPerTask) {
         long emitStartTime = getCurrentTime();
         long sliceTs = beginTs + (this.timeSliceLengthMs * (elementsGenerated / elements));
-        string eventTail = "\",\"event_time\":\"" + sliceTs + "\",\"ip_address\":\"1.2.3.4\"}";
+        string eventTail = sliceTs + "\",\"ip_address\":\"1.2.3.4\"}";
         for (int i = 0; i < elements; i++) {
           if (adsIdx == ads.Count) {
             adsIdx = 0;

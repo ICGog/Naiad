@@ -193,16 +193,16 @@ namespace FaultToleranceExamples.YCSBDD
       private int adsIdx;
       private long numEventsPerEpoch;
       private InputCollection<string> input;
+      private string[] adEvents;
 
       public override void OnReceive(Microsoft.Research.Naiad.Dataflow.Message<long, T> message)
       {
         long emitStartTime = getCurrentTime();
-        List<string> adEvents = new List<string>();
         for (int i = 0; i < this.numEventsPerEpoch; i++) {
           if (this.adsIdx == this.preparedAds.Length) {
             this.adsIdx = 0;
           }
-          adEvents.Add(preparedAds[this.adsIdx++] + "\",\"event_time\":\"" + getCurrentTime() + "\",\"ip_address\":\"1.2.3.4\"}");
+          adEvents[i] = preparedAds[this.adsIdx++] + getCurrentTime() + "\",\"ip_address\":\"1.2.3.4\"}";
         }
         input.OnNext(adEvents);
         long emitEndTime = getCurrentTime();
@@ -217,6 +217,7 @@ namespace FaultToleranceExamples.YCSBDD
         this.preparedAds = preparedAds;
         this.adsIdx = 0;
         this.numEventsPerEpoch = numEventsPerEpoch;
+        this.adEvents = new string[this.numEventsPerEpoch];
       }
     }
 
@@ -430,9 +431,10 @@ namespace FaultToleranceExamples.YCSBDD
       }
     }
 
+    public static DateTime dt1970 = new DateTime(1970, 1, 1);
+
     public static long getCurrentTime()
     {
-      var dt1970 = new DateTime(1970, 1, 1);
       TimeSpan span = DateTime.UtcNow - dt1970;
       return Convert.ToInt64(span.TotalMilliseconds);
     }
