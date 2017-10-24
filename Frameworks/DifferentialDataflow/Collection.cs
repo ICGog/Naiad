@@ -286,13 +286,15 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow
         #region YCSB
       public Collection<R2, T> AdEventGenerator<R2>(Expression<Func<string, string, R2>> resultFunc,
                                                     string[] preparedAds,
-                                                    long numEventsPerEpoch)
+                                                    long numEventsPerEpoch,
+                                                    long timeSliceLengthMs,
+                                                    Expression<Func<R, long>> timeFunc)
           where R2: IEquatable<R2>
       {
           if (resultFunc == null)
             throw new ArgumentNullException("resultFunc");
 
-          return this.Manufacture<R2>((i, v) => new Operators.AdEventGeneratorVertex<R, T, R2>(i, v, resultFunc, preparedAds, numEventsPerEpoch), null, null, false, "AdEventGenerator");
+          return this.Manufacture<R2>((i, v) => new Operators.AdEventGeneratorVertex<R, T, R2>(i, v, resultFunc, preparedAds, numEventsPerEpoch, timeSliceLengthMs, timeFunc), null, null, false, "AdEventGenerator");
       }
 
         public Collection<R2, T> RedisCampaign<R2>(Expression<Func<R, string>> adFunc,

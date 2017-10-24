@@ -38,6 +38,8 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.Operators
     private int adsIdx;
     private long numEventsPerEpoch;
     private DateTime dt1970;
+    private long timeSliceLengthMs;
+    private Func<S, long> timeSelector;
 
     public override void OnReceive(Message<Weighted<S>, T> message)
     {
@@ -53,7 +55,10 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.Operators
           output.Send((this.resultCreator(preparedAds[this.adsIdx++], eventTail)).ToWeighted(1));
         }
         long emitEndTime = getCurrentTime();
-        Console.WriteLine("Generating " + this.numEventsPerEpoch + " records took " + (emitEndTime - emitStartTime));
+        if (emitEndTime - this.timeSelector(message.payload[j].record) > timeSliceLengthMs) {
+          long behind = emitEndTime - this.timeSelector(message.payload[j].record) - timeSliceLengthMs;
+          Console.WriteLine("Falling behind by " + behind + "ms while emitting " + numEventsPerEpoch + " events");
+        }
       }
     }
 
@@ -65,13 +70,17 @@ namespace Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.Operators
 
     public AdEventGeneratorVertex(int index, Stage<T> collection,
                                   Expression<Func<string, string, R>> resultFunc,
-                                  string[] preparedAds, long numEventsPerEpoch)
+                                  string[] preparedAds, long numEventsPerEpoch,
+                                  long timeSliceLengthMs,
+                                  Expression<Func<S, long>> timeFunc)
       : base(index, collection) {
       this.resultCreator = resultFunc.Compile();
       this.preparedAds = preparedAds;
       this.adsIdx = 0;
       this.numEventsPerEpoch = numEventsPerEpoch;
       this.dt1970 = new DateTime(1970, 1, 1);
+      this.timeSliceLengthMs = timeSliceLengthMs;
+      this.timeSelector = timeFunc.Compile();
     }
   }
 }

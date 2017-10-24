@@ -26,17 +26,17 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 
-
 using Microsoft.Research.Naiad;
 using Microsoft.Research.Naiad.Dataflow;
+using Microsoft.Research.Naiad.Dataflow.PartitionBy;
 using Microsoft.Research.Naiad.Dataflow.StandardVertices;
 using Microsoft.Research.Naiad.Input;
+using Microsoft.Research.Naiad.Frameworks.Lindi;
 using Microsoft.Research.Naiad.Runtime.Progress;
 using Microsoft.Research.Naiad.Runtime.FaultTolerance;
 using Microsoft.Research.Naiad.FaultToleranceManager;
 using Microsoft.Research.Naiad.Frameworks.DifferentialDataflow;
 using Microsoft.Research.Naiad.Frameworks.DifferentialDataflow.Operators;
-
 using Microsoft.Research.Naiad.Serialization;
 using Microsoft.Research.Naiad.Diagnostics;
 
@@ -53,12 +53,20 @@ namespace FaultToleranceExamples.YCSBDD
   {
 
     public static Stream<string, T> AdVertex<T>(this Stream<long, T> stream,
-                                                InputCollection<string> input,
+                                                BatchedDataSource<string> input,
                                                 string[] preparedAds,
-                                                long numEventsPerEpoch)
+                                                long numEventsPerEpoch,
+                                                long timeSliceLengthMs)
       where T : Time<T>
     {
-      return stream.NewUnaryStage<long, string, T>((i, s) => new YCSBDD.AdVertex<T>(i, s, input, preparedAds, numEventsPerEpoch), null, null, "AdVertex");
+      return stream.NewUnaryStage<long, string, T>((i, s) => new YCSBDD.AdVertex<T>(i, s, input, preparedAds, numEventsPerEpoch, timeSliceLengthMs), null, null, "AdVertex");
+    }
+
+    public static Stream<Pair<string, long>, T> RedisVertex<T>(this Stream<YCSBDD.AdEventProjected, T> stream,
+                                                               Dictionary<string, string> adCampaign)
+      where T : Time<T>
+    {
+      return stream.NewUnaryStage<YCSBDD.AdEventProjected, Pair<string, long>, T>((i, s) => new YCSBDD.RedisVertex<T>(i, s, adCampaign), null, null, "RedisVertex");
     }
   }
 
@@ -192,8 +200,9 @@ namespace FaultToleranceExamples.YCSBDD
       private string[] preparedAds;
       private int adsIdx;
       private long numEventsPerEpoch;
-      private InputCollection<string> input;
+      private BatchedDataSource<string> input;
       private string[] adEvents;
+      private long timeSliceLengthMs;
 
       public override void OnReceive(Microsoft.Research.Naiad.Dataflow.Message<long, T> message)
       {
@@ -206,18 +215,45 @@ namespace FaultToleranceExamples.YCSBDD
         }
         input.OnNext(adEvents);
         long emitEndTime = getCurrentTime();
-        Console.WriteLine("Generating " + this.numEventsPerEpoch + " records took " + (emitEndTime - emitStartTime));
+        if (emitEndTime - message.payload[0] > timeSliceLengthMs) {
+          long behind = emitEndTime - message.payload[0] - timeSliceLengthMs;
+          Console.WriteLine("Falling behind by " + behind + "ms while emitting " + numEventsPerEpoch + " events");
+        }
       }
 
       public AdVertex(int index, Stage<T> stage,
-                      InputCollection<string> input,
-                      string[] preparedAds, long numEventsPerEpoch) : base(index, stage)
+                      BatchedDataSource<string> input,
+                      string[] preparedAds, long numEventsPerEpoch, long timeSliceLengthMs) : base(index, stage)
       {
         this.input = input;
         this.preparedAds = preparedAds;
         this.adsIdx = 0;
         this.numEventsPerEpoch = numEventsPerEpoch;
         this.adEvents = new string[this.numEventsPerEpoch];
+        this.timeSliceLengthMs = timeSliceLengthMs;
+      }
+    }
+
+    public class RedisVertex<T> : UnaryVertex<AdEventProjected, Pair<string, long>, T>
+      where T: Time<T>
+    {
+      private Dictionary<string, string> adCampaign;
+
+      public override void OnReceive(Microsoft.Research.Naiad.Dataflow.Message<AdEventProjected, T> message)
+      {
+        var output = this.Output.GetBufferForTime(message.time);
+        for (int i = 0; i < message.length; i++)
+        {
+          string campaignId = adCampaign[message.payload[i].AdId];
+          long campaignTime = 10000 * (Convert.ToInt64(message.payload[i].EventTime) / 10000);
+          output.Send(campaignId.PairWith(campaignTime));
+        }
+      }
+
+      public RedisVertex(int index, Stage<T> stage,
+                         Dictionary<string, string> adCampaign) : base(index, stage)
+      {
+        this.adCampaign = adCampaign;
       }
     }
 
@@ -314,10 +350,10 @@ namespace FaultToleranceExamples.YCSBDD
 
       ConnectionMultiplexer redis = ConnectionMultiplexer.Connect(redisHost);
 
+//      Placement inputPlacement = new Placement.ProcessRange(Enumerable.Range(0, 2).Concat(Enumerable.Range(0, 1)), Enumerable.Range(0, 4));
 
       using (var computation = NewComputation.FromConfig(this.config))
       {
-        var kafkaInput = computation.NewInputCollection<string>();
         long numEventsPerEpoch = loadTargetHz * timeSliceLengthMs / 1000 / computation.Configuration.Processes;
 
         YCSBEventGenerator eventGenerator =
@@ -340,34 +376,41 @@ namespace FaultToleranceExamples.YCSBDD
         //   .Count(x => x)
         //   .RedisCampaignProcessor<string>(x => x.First.First, x => x.First.Second, x => x.Second, redis);
 
+        var batchedAdInput = new BatchedDataSource<string>();
+        var batchedAdInputStream = computation.NewInput(batchedAdInput);
+        var adCollectionInput = computation.NewInputCollection<string>();
+        var campaignTimeInput = computation.NewInputCollection<Pair<Pair<string, long>, long>>();
         var windowInput = new BatchedDataSource<long>();
-        Collection<string, Epoch> adEvents;
+        var windowInputStream = computation.NewInput(windowInput);//.PartitionBy(x => (int)(Convert.ToInt64(x) % 5));
         if (!singleThreadGenerator) {
           if (lindiGenerator) {
-            var windowInputStream = computation.NewInput(windowInput);
-            windowInputStream.AdVertex(kafkaInput, eventGenerator.getPreparedAds(), numEventsPerEpoch);
-            adEvents = kafkaInput;
+            windowInputStream.AdVertex(batchedAdInput, eventGenerator.getPreparedAds(), numEventsPerEpoch, timeSliceLengthMs);
+            var campaignsTime = batchedAdInputStream
+              .Select(jsonString => Newtonsoft.Json.JsonConvert.DeserializeObject<AdEvent>(jsonString))
+              .Where(adEvent => adEvent.event_type.Equals("view"))
+              .Select(adEvent => new AdEventProjected(adEvent.ad_id, adEvent.event_time))
+              .RedisVertex(adsToCampaign)
+              .Count()
+              .Subscribe((ii, l) => campaignTimeInput.OnNext(l));
+
+            campaignTimeInput.RedisCampaignProcessor<string>(x => x.First.First, x => x.First.Second, x => x.Second, redis);
           } else {
-            adEvents = kafkaInput
+            var campaignsTime = adCollectionInput
               .AdEventGenerator((preparedAd, tailAd) => preparedAd + tailAd,
-                                eventGenerator.getPreparedAds(), numEventsPerEpoch);
+                                eventGenerator.getPreparedAds(), numEventsPerEpoch, timeSliceLengthMs,
+                                x => Convert.ToInt64(x))
+              .Select(jsonString => Newtonsoft.Json.JsonConvert.DeserializeObject<AdEvent>(jsonString))
+              .Where(adEvent => adEvent.event_type.Equals("view"))
+              .Select(adEvent => new AdEventProjected(adEvent.ad_id, adEvent.event_time))
+              .RedisCampaign(adEvent => adEvent.AdId, adEvent => adEvent.EventTime,
+                             (campaignId, eventTime) => campaignId.PairWith(eventTime),
+                             redis, adsToCampaign);
+            var result = campaignsTime
+              .Select(campaignTime => campaignTime.First.PairWith(10000 * (Convert.ToInt64(campaignTime.Second) / 10000)))
+              .Count(x => x)
+              .RedisCampaignProcessor<string>(x => x.First.First, x => x.First.Second, x => x.Second, redis);
           }
-        } else {
-          adEvents = kafkaInput;
         }
-
-        var campaignsTime = adEvents
-          .Select(jsonString => Newtonsoft.Json.JsonConvert.DeserializeObject<AdEvent>(jsonString))
-          .Where(adEvent => adEvent.event_type.Equals("view"))
-          .Select(adEvent => new AdEventProjected(adEvent.ad_id, adEvent.event_time))
-          .RedisCampaign(adEvent => adEvent.AdId, adEvent => adEvent.EventTime,
-                         (campaignId, eventTime) => campaignId.PairWith(eventTime),
-                         redis, adsToCampaign);
-
-        var result = campaignsTime
-          .Select(campaignTime => campaignTime.First.PairWith(10000 * (Convert.ToInt64(campaignTime.Second) / 10000)))
-          .Count(x => x)
-          .RedisCampaignProcessor<string>(x => x.First.First, x => x.First.Second, x => x.Second, redis);
 
         // if (computation.Configuration.ProcessID == 0)
         // {
@@ -381,7 +424,7 @@ namespace FaultToleranceExamples.YCSBDD
         // if (computation.Configuration.ProcessID == 0)
         // {
         //   YCSB.KafkaConsumer kafkaConsumer = new YCSB.KafkaConsumer(kafkaBrokers, kafkaTopic);
-        //   kafkaConsumer.StartConsumer(kafkaInput, computation);
+        //   kafkaConsumer.StartConsumer(adCollectionInput, computation);
         // }
 
         if (!singleThreadGenerator) {
@@ -393,7 +436,7 @@ namespace FaultToleranceExamples.YCSBDD
             if (lindiGenerator) {
               windowInput.OnNext(beginWindow);
             } else {
-              kafkaInput.OnNext(beginWindow.ToString());
+              adCollectionInput.OnNext(beginWindow.ToString());
             }
             long sleepTime = timeSliceLengthMs + beginWindow - getCurrentTime();
             if (sleepTime > 0) {
@@ -411,16 +454,17 @@ namespace FaultToleranceExamples.YCSBDD
           while((line = file.ReadLine()) != null) {
             lineIndex++;
             if (lineIndex % 10000 == 0) {
-              kafkaInput.OnNext(evs);
+              adCollectionInput.OnNext(evs);
               evs.Clear();
             }
             evs.Add(line);
           }
-        } else {
-          eventGenerator.run(computation.Configuration.Processes, kafkaInput);
         }
 
-        kafkaInput.OnCompleted();
+        windowInput.OnCompleted();
+        adCollectionInput.OnCompleted();
+        campaignTimeInput.OnCompleted();
+        batchedAdInput.OnCompleted();
 
         computation.Join();
 
