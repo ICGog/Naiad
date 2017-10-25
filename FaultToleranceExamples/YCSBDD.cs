@@ -263,12 +263,12 @@ namespace FaultToleranceExamples.YCSBDD
     {
       this.config = Configuration.FromArgs(ref args);
       this.config.MaxLatticeInternStaleTimes = 50;
-//      this.config.DefaultCheckpointInterval = 1000;
+      this.config.DefaultCheckpointInterval = 1000;
 
       string ycsbConfigFile = "";
       string logPrefix = "/tmp/falkirk/";
       bool minimalLogging = false;
-      int managerWorkerCount = 4;
+      int managerWorkerCount = 1;
       bool nonIncrementalFTManager = false;
       long loadTargetHz = 100000;
       long timeSliceLengthMs = 1000;
@@ -276,6 +276,7 @@ namespace FaultToleranceExamples.YCSBDD
       string replayEventsPath = "";
       bool singleThreadGenerator = false;
       bool lindiGenerator = false;
+      bool enableFT = false;
       int i = 1;
       while (i < args.Length)
       {
@@ -325,6 +326,10 @@ namespace FaultToleranceExamples.YCSBDD
           lindiGenerator = true;
           i++;
           break;
+        case "-ft":
+          enableFT = true;
+          i++;
+          break;
         default:
           throw new ApplicationException("Unknown argument " + args[i]);
         }
@@ -338,15 +343,16 @@ namespace FaultToleranceExamples.YCSBDD
       string zkServers = getZookeeperServers(conf);
       string redisHost = conf["redis.host"].ToString();
 
-      System.IO.Directory.CreateDirectory(logPrefix);
-//      this.config.LogStreamFactory = (s => new FileLogStream(logPrefix, s));
+      FTManager manager = null;
+      if (enableFT) {
+        System.IO.Directory.CreateDirectory(logPrefix);
+        this.config.LogStreamFactory = (s => new FileLogStream(logPrefix, s));
+        System.IO.Directory.CreateDirectory(Path.Combine(logPrefix, "checkpoint"));
+        this.config.CheckpointingFactory = s => new FileStreamSequence(Path.Combine(logPrefix, "checkpoint"), s);
 
-      System.IO.Directory.CreateDirectory(Path.Combine(logPrefix, "checkpoint"));
-//      this.config.CheckpointingFactory = s => new FileStreamSequence(Path.Combine(logPrefix, "checkpoint"), s);
-
-      // FTManager manager = new FTManager(this.config.LogStreamFactory,
-      //                                   null, null,
-      //                                   !nonIncrementalFTManager);
+        manager = new FTManager(this.config.LogStreamFactory, null, null,
+                                !nonIncrementalFTManager);
+      }
 
       ConnectionMultiplexer redis = ConnectionMultiplexer.Connect(redisHost);
 
@@ -382,18 +388,25 @@ namespace FaultToleranceExamples.YCSBDD
         var campaignTimeInput = computation.NewInputCollection<Pair<Pair<string, long>, long>>();
         var windowInput = new BatchedDataSource<long>();
         var windowInputStream = computation.NewInput(windowInput);//.PartitionBy(x => (int)(Convert.ToInt64(x) % 5));
+
         if (!singleThreadGenerator) {
           if (lindiGenerator) {
-            windowInputStream.AdVertex(batchedAdInput, eventGenerator.getPreparedAds(), numEventsPerEpoch, timeSliceLengthMs);
+            windowInputStream.AdVertex(batchedAdInput, eventGenerator.getPreparedAds(), numEventsPerEpoch, timeSliceLengthMs).SetCheckpointType(CheckpointType.None);
             var campaignsTime = batchedAdInputStream
-              .Select(jsonString => Newtonsoft.Json.JsonConvert.DeserializeObject<AdEvent>(jsonString))
-              .Where(adEvent => adEvent.event_type.Equals("view"))
-              .Select(adEvent => new AdEventProjected(adEvent.ad_id, adEvent.event_time))
-              .RedisVertex(adsToCampaign)
-              .Count()
+              .Select(jsonString => Newtonsoft.Json.JsonConvert.DeserializeObject<AdEvent>(jsonString)).SetCheckpointType(CheckpointType.None)
+              .Where(adEvent => adEvent.event_type.Equals("view")).SetCheckpointType(CheckpointType.None)
+              .Select(adEvent => new AdEventProjected(adEvent.ad_id, adEvent.event_time)).SetCheckpointType(CheckpointType.None)
+              .RedisVertex(adsToCampaign).SetCheckpointType(CheckpointType.None)
+              .Count().SetCheckpointType(CheckpointType.Stateless)//.SetCheckpointPolicy(v => new CheckpointEagerly());
               .Subscribe((ii, l) => campaignTimeInput.OnNext(l));
 
-            campaignTimeInput.RedisCampaignProcessor<string>(x => x.First.First, x => x.First.Second, x => x.Second, redis);
+            var result = campaignTimeInput.RedisCampaignProcessor<string>(x => x.First.First, x => x.First.Second, x => x.Second, redis);
+
+            if (computation.Configuration.ProcessID == 0 && enableFT) {
+              manager.Initialize(computation,
+                                 new int[] { result.Output.ForStage.StageId },
+                                 managerWorkerCount, minimalLogging);
+            }
           } else {
             var campaignsTime = adCollectionInput
               .AdEventGenerator((preparedAd, tailAd) => preparedAd + tailAd,
@@ -409,15 +422,14 @@ namespace FaultToleranceExamples.YCSBDD
               .Select(campaignTime => campaignTime.First.PairWith(10000 * (Convert.ToInt64(campaignTime.Second) / 10000)))
               .Count(x => x)
               .RedisCampaignProcessor<string>(x => x.First.First, x => x.First.Second, x => x.Second, redis);
+
+            if (computation.Configuration.ProcessID == 0 && enableFT) {
+              manager.Initialize(computation,
+                                 new int[] { result.Output.ForStage.StageId },
+                                 managerWorkerCount, minimalLogging);
+            }
           }
         }
-
-        // if (computation.Configuration.ProcessID == 0)
-        // {
-        //   manager.Initialize(computation,
-        //                      new int[] { projected.ForStage.StageId },
-        //                      managerWorkerCount, minimalLogging);
-        // }
 
         computation.Activate();
 
@@ -467,11 +479,10 @@ namespace FaultToleranceExamples.YCSBDD
         batchedAdInput.OnCompleted();
 
         computation.Join();
-
-        // if (computation.Configuration.ProcessID == 0)
-        // {
-        //   manager.Join();
-        // }
+        if (computation.Configuration.ProcessID == 0 && enableFT)
+        {
+          manager.Join();
+        }
       }
     }
 
