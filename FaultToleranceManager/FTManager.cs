@@ -2143,7 +2143,11 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
         private HashSet<int> failedProcesses = new HashSet<int>();
         private ManualResetEventSlim failureRestartEvent = null;
 
-        public void FailProcess(HashSet<int> processes)
+        public void FailProcess(HashSet<int> processes) {
+          FailProcess(processes, 2500, 1000);
+        }
+
+      public void FailProcess(HashSet<int> processes, int mandatoryDelay, int maxRandomDelay)
         {
             lock (this)
             {
@@ -2160,7 +2164,7 @@ namespace Microsoft.Research.Naiad.FaultToleranceManager
 
             foreach (var processId in processes)
             {
-                int restartDelay = 2500 + this.random.Next(1000);
+                int restartDelay = mandatoryDelay + this.random.Next(maxRandomDelay);
 
                 Console.WriteLine("Sending failure request to " + processId + " delay " + restartDelay);
                 this.computation.SimulateFailure(processId, restartDelay);

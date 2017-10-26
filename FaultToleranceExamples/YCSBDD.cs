@@ -21,6 +21,7 @@
 using System;
 using System.IO;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Diagnostics;
 using System.Threading;
@@ -206,6 +207,7 @@ namespace FaultToleranceExamples.YCSBDD
 
       public override void OnReceive(Microsoft.Research.Naiad.Dataflow.Message<long, T> message)
       {
+        Console.WriteLine("AdVertex received " + message.time);
         long emitStartTime = getCurrentTime();
         for (int i = 0; i < this.numEventsPerEpoch; i++) {
           if (this.adsIdx == this.preparedAds.Length) {
@@ -277,6 +279,8 @@ namespace FaultToleranceExamples.YCSBDD
       bool singleThreadGenerator = false;
       bool lindiGenerator = false;
       bool enableFT = false;
+      bool enableFailure = false;
+      long failAfterMs = 11000;
       int i = 1;
       while (i < args.Length)
       {
@@ -329,6 +333,14 @@ namespace FaultToleranceExamples.YCSBDD
         case "-ft":
           enableFT = true;
           i++;
+          break;
+        case "-enablefailure":
+          enableFailure = true;
+          i++;
+          break;
+        case "-failafter":
+          failAfterMs = Int64.Parse(args[i + 1]);
+          i += 2;
           break;
         default:
           throw new ApplicationException("Unknown argument " + args[i]);
@@ -383,28 +395,30 @@ namespace FaultToleranceExamples.YCSBDD
         //   .RedisCampaignProcessor<string>(x => x.First.First, x => x.First.Second, x => x.Second, redis);
 
         var batchedAdInput = new BatchedDataSource<string>();
-        var batchedAdInputStream = computation.NewInput(batchedAdInput);
+        var batchedAdInputStream = computation.NewInput(batchedAdInput).SetCheckpointType(CheckpointType.CachingInput).SetCheckpointPolicy(s => new CheckpointEagerly());
         var adCollectionInput = computation.NewInputCollection<string>();
         var campaignTimeInput = computation.NewInputCollection<Pair<Pair<string, long>, long>>();
+        //.SetCheckpointType(CheckpointType.CachingInput).SetCheckpointPolicy(s => new CheckpointEagerly());
         var windowInput = new BatchedDataSource<long>();
-        var windowInputStream = computation.NewInput(windowInput);//.PartitionBy(x => (int)(Convert.ToInt64(x) % 5));
+        var windowInputStream = computation.NewInput(windowInput).SetCheckpointType(CheckpointType.StatelessLogEphemeral);//.PartitionBy(x => (int)(Convert.ToInt64(x) % 5));
 
         if (!singleThreadGenerator) {
           if (lindiGenerator) {
-            windowInputStream.AdVertex(batchedAdInput, eventGenerator.getPreparedAds(), numEventsPerEpoch, timeSliceLengthMs).SetCheckpointType(CheckpointType.None);
+            windowInputStream.AdVertex(batchedAdInput, eventGenerator.getPreparedAds(), numEventsPerEpoch, timeSliceLengthMs).SetCheckpointType(CheckpointType.StatelessLogEphemeral);
             var campaignsTime = batchedAdInputStream
-              .Select(jsonString => Newtonsoft.Json.JsonConvert.DeserializeObject<AdEvent>(jsonString)).SetCheckpointType(CheckpointType.None)
-              .Where(adEvent => adEvent.event_type.Equals("view")).SetCheckpointType(CheckpointType.None)
-              .Select(adEvent => new AdEventProjected(adEvent.ad_id, adEvent.event_time)).SetCheckpointType(CheckpointType.None)
-              .RedisVertex(adsToCampaign).SetCheckpointType(CheckpointType.None)
-              .Count().SetCheckpointType(CheckpointType.Stateless)//.SetCheckpointPolicy(v => new CheckpointEagerly());
-              .Subscribe((ii, l) => campaignTimeInput.OnNext(l));
+              .Select(jsonString => Newtonsoft.Json.JsonConvert.DeserializeObject<AdEvent>(jsonString)).SetCheckpointType(CheckpointType.StatelessLogEphemeral)
+              .Where(adEvent => adEvent.event_type.Equals("view")).SetCheckpointType(CheckpointType.StatelessLogEphemeral)
+              .Select(adEvent => new AdEventProjected(adEvent.ad_id, adEvent.event_time)).SetCheckpointType(CheckpointType.StatelessLogEphemeral)
+              .RedisVertex(adsToCampaign).SetCheckpointType(CheckpointType.StatelessLogEphemeral)
+              .Count().SetCheckpointType(CheckpointType.StatelessLogEphemeral);
+            campaignsTime.Subscribe((ii, l) => campaignTimeInput.OnNext(l));
 
-            var result = campaignTimeInput.RedisCampaignProcessor<string>(x => x.First.First, x => x.First.Second, x => x.Second, redis);
+            var result = campaignTimeInput.RedisCampaignProcessor<string>(x => x.First.First, x => x.First.Second, x => x.Second, redis).SetCheckpointType(CheckpointType.StatelessLogEphemeral);
 
             if (computation.Configuration.ProcessID == 0 && enableFT) {
               manager.Initialize(computation,
-                                 new int[] { result.Output.ForStage.StageId },
+//                                 new int[] { campaignsTime.ForStage.StageId, result.Output.ForStage.StageId },
+                                 new int[] { campaignsTime.ForStage.StageId },
                                  managerWorkerCount, minimalLogging);
             }
           } else {
@@ -442,6 +456,7 @@ namespace FaultToleranceExamples.YCSBDD
         if (!singleThreadGenerator) {
           long numIter = numElementsToGenerate / loadTargetHz * 1000 / timeSliceLengthMs;
           long beginWindow = getCurrentTime();
+          long startTime = beginWindow;
           Thread.Sleep((int)((beginWindow / 10000) * 10000 + 10000 - beginWindow));
           beginWindow = (beginWindow / 10000) * 10000 + 10000;
           for (int epoch = 0; epoch < numIter; ++epoch) {
@@ -450,6 +465,26 @@ namespace FaultToleranceExamples.YCSBDD
             } else {
               adCollectionInput.OnNext(beginWindow.ToString());
             }
+
+            if (computation.Configuration.ProcessID == 0 && enableFailure) {
+              long sinceStart = getCurrentTime() - startTime;
+              if (sinceStart <= failAfterMs && beginWindow + timeSliceLengthMs - startTime >= failAfterMs) {
+                long sleepToFailureTime = failAfterMs - sinceStart;
+                if (sleepToFailureTime > 0) {
+                  Thread.Sleep((int)sleepToFailureTime);
+                }
+                IEnumerable<int> pauseImmediately = Enumerable.Range(0, computation.Configuration.Processes);
+                List<int> pauseAfterRecovery = new List<int>();
+                List<int> pauseLast = new List<int>();
+                HashSet<int> failedProcesses = new HashSet<int>();
+                failedProcesses.Add(1);
+                manager.FailProcess(failedProcesses, 0, 1);
+                manager.PerformRollback(pauseImmediately,
+                                        pauseAfterRecovery,
+                                        pauseLast);
+              }
+            }
+
             long sleepTime = timeSliceLengthMs + beginWindow - getCurrentTime();
             if (sleepTime > 0) {
               Thread.Sleep((int)sleepTime);

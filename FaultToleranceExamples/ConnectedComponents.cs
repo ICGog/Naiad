@@ -125,7 +125,7 @@ namespace FaultToleranceExamples.ConnectedComponents
             this.config.DefaultCheckpointInterval = 60000;
             bool syncEachEpoch = false;
             bool checkpointEagerly = false;
-            string logPrefix = "/mnt/ramdisk/falkirk/";
+            string logPrefix = "/tmp/falkirk/";
             bool minimalLogging = false;
             int managerWorkerCount = 4;
             bool nonIncrementalFTManager = false;
