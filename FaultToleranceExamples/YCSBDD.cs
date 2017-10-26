@@ -69,6 +69,13 @@ namespace FaultToleranceExamples.YCSBDD
     {
       return stream.NewUnaryStage<YCSBDD.AdEventProjected, Pair<string, long>, T>((i, s) => new YCSBDD.RedisVertex<T>(i, s, adCampaign), null, null, "RedisVertex");
     }
+
+    public static Stream<long, T> RedisCampaignVertex<T>(this Stream<Pair<Pair<string, long>, long>, T> stream,
+                                                         ConnectionMultiplexer redis)
+      where T : Time<T>
+    {
+      return stream.NewUnaryStage<Pair<Pair<string, long>, long>, long, T>((i, s) => new YCSBDD.RedisCampaignVertex<T>(i, s, redis), null, null, "RedisCampaignVertex");
+    }
   }
 
   public class YCSBDD : Example
@@ -192,6 +199,85 @@ namespace FaultToleranceExamples.YCSBDD
       public override string ToString()
       {
         return adId + " " + eventTime;
+      }
+    }
+
+    public class RedisCampaignVertex<T> : UnaryVertex<Pair<Pair<string, long>, long>, long, T>
+      where T: Time<T>
+    {
+      private IDatabase redisDB;
+      private DateTime dt1970;
+      private Dictionary<T, Dictionary<string, long>> cache;
+      private Dictionary<T, long> epochToTime;
+      private long windowDuration = 10000;
+
+      public override void OnReceive(Microsoft.Research.Naiad.Dataflow.Message<Pair<Pair<string, long>, long>, T> message)
+      {
+        Console.WriteLine("RedisCampaignVertex " + message.time);
+        this.NotifyAt(message.time);
+        for (int i = 0; i < message.length; i++) {
+          string campaignId = message.payload[i].First.First;
+          long campaignTime = message.payload[i].First.Second;
+          epochToTime[message.time] = campaignTime;
+          long campaignCount = message.payload[i].Second;
+          Dictionary<string, long> campaignCache;
+          if (cache.TryGetValue(message.time, out campaignCache)) {
+            long value;
+            if (campaignCache.TryGetValue(campaignId, out value)) {
+              campaignCache[campaignId] = value + campaignCount;
+            } else {
+              campaignCache[campaignId] = campaignCount;
+            }
+          } else {
+            cache[message.time] = new Dictionary<string, long>();
+            cache[message.time][campaignId] = campaignCount;
+          }
+        }
+      }
+
+      public override void OnNotify(T time)
+      {
+        long campaignTime;
+        if (epochToTime.TryGetValue(time, out campaignTime)) {
+          TimeSpan span = DateTime.UtcNow - dt1970;
+          long latency = Convert.ToInt64(span.TotalMilliseconds) - campaignTime - windowDuration;
+          foreach (KeyValuePair<string, long> entry in cache[time]) {
+            writeWindow(entry.Key, campaignTime, entry.Value);
+          }
+          cache.Remove(time);
+          epochToTime.Remove(time);
+        }
+        base.OnNotify(time);
+      }
+
+      private long writeWindow(String campaignId, long campaignTime, long campaignCount)
+      {
+        String cTimeStr = campaignTime.ToString();
+        String windowUUID = redisDB.HashGet(campaignId, cTimeStr);
+        if (windowUUID == null) {
+          windowUUID = System.Guid.NewGuid().ToString();
+          redisDB.HashSet(campaignId, cTimeStr, windowUUID);
+          String windowListUUID = redisDB.HashGet(campaignId, "windows");
+          if (windowListUUID == null) {
+            windowListUUID = System.Guid.NewGuid().ToString();
+            redisDB.HashSet(campaignId, "windows", windowListUUID);
+          }
+          redisDB.ListLeftPush(windowListUUID, cTimeStr);
+        }
+        TimeSpan span = DateTime.UtcNow - dt1970;
+        long curTime = Convert.ToInt64(span.TotalMilliseconds);
+        redisDB.HashIncrement(windowUUID, "seen_count", campaignCount);
+        redisDB.HashSet(windowUUID, "time_updated", curTime.ToString());
+        redisDB.ListLeftPush("time_updated", curTime.ToString());
+        return curTime - campaignTime;
+      }
+
+      public RedisCampaignVertex(int index, Stage<T> stage, ConnectionMultiplexer redis) : base(index, stage)
+      {
+        redisDB = redis.GetDatabase();
+        dt1970 = new DateTime(1970, 1, 1);
+        cache = new Dictionary<T, Dictionary<string, long>>();
+        epochToTime = new Dictionary<T, long>();
       }
     }
 
@@ -411,6 +497,7 @@ namespace FaultToleranceExamples.YCSBDD
               .Select(adEvent => new AdEventProjected(adEvent.ad_id, adEvent.event_time)).SetCheckpointType(CheckpointType.StatelessLogEphemeral)
               .RedisVertex(adsToCampaign).SetCheckpointType(CheckpointType.StatelessLogEphemeral)
               .Count().SetCheckpointType(CheckpointType.StatelessLogEphemeral);
+//              .RedisCampaignVertex(redis).SetCheckpointType(CheckpointType.StatelessLogEphemeral);
             campaignsTime.Subscribe((ii, l) => campaignTimeInput.OnNext(l));
 
             var result = campaignTimeInput.RedisCampaignProcessor<string>(x => x.First.First, x => x.First.Second, x => x.Second, redis).SetCheckpointType(CheckpointType.StatelessLogEphemeral);
