@@ -217,7 +217,6 @@ namespace FaultToleranceExamples.ConnectedComponents
                                               !nonIncrementalFTManager);
             using (var computation = NewComputation.FromConfig(this.config))
             {
-//                computation.OnStageStable += this.ReactToStable;
                 if (!checkpointEagerly)
                 {
                   computation.WithCheckpointPolicy(v => new CheckpointAtBatch<BatchIn<Epoch>>(checkpointTimeLength));
@@ -288,9 +287,9 @@ namespace FaultToleranceExamples.ConnectedComponents
 
                 if (computation.Configuration.ProcessID == 0)
                 {
-                    //computation.Sync(0);
-                    //Console.WriteLine("Time post first sync {0}", stopwatch.ElapsedMilliseconds);
-                    //stopwatch.Restart();
+                    output.Sync(0);
+                    Console.WriteLine("Time post first sync {0}", stopwatch.ElapsedMilliseconds);
+                    stopwatch.Restart();
                     int j = 0;
                     int curEpoch = 1;
                     for (; curEpoch <= numEpochsToRun; curEpoch++)
@@ -304,11 +303,11 @@ namespace FaultToleranceExamples.ConnectedComponents
                         }
                         if (syncEachEpoch)
                         {
-                          computation.Sync(curEpoch - 1);
+                          output.Sync(curEpoch - 1);
                         }
                         edges.OnNext(changes);
                     }
-                    computation.Sync(numEpochsToRun);
+                    output.Sync(numEpochsToRun);
                     Console.WriteLine("Total time {0}", stopwatch.ElapsedMilliseconds);
                 }
                 edges.OnCompleted();
