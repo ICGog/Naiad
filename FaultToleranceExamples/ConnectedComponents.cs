@@ -125,7 +125,7 @@ namespace FaultToleranceExamples.ConnectedComponents
             this.config.DefaultCheckpointInterval = 60000;
             bool syncEachEpoch = false;
             bool checkpointEagerly = false;
-            string logPrefix = "/tmp/falkirk/";
+            string logPrefix = "/mnt/ramdisk/falkirk/";
             bool minimalLogging = false;
             int managerWorkerCount = 4;
             bool nonIncrementalFTManager = false;
@@ -249,8 +249,8 @@ namespace FaultToleranceExamples.ConnectedComponents
                 Func<IntPair, int> priorityFunction = node => 65536 * (node.t < 10 ? node.t : 10 + Convert.ToInt32(Math.Log(1 + node.t) / Math.Log(2.0)));
 
                 var cc = edges.ConnectedComponents(priorityFunction)
-                  .Count(n => n.t, (l, c) => c)
-                  .Consolidate();
+                  .Count(n => n.t, (l, c) => c);
+//                  .Consolidate();
 
                 if (!checkpointEagerly)
                 {
@@ -261,12 +261,13 @@ namespace FaultToleranceExamples.ConnectedComponents
                   cc.SetCheckpointType(CheckpointType.Stateless).SetCheckpointPolicy(s => new CheckpointEagerly());
                 }
 
-                var output = cc.Subscribe(stopwatch, l =>
-                    {
-                      Console.Error.WriteLine("Time to process: {0}", stopwatch.Elapsed);
-                      foreach (var result in l.OrderBy(x => x.record))
-                        Console.Error.WriteLine(result);
-                    });
+                // var output = cc.Subscribe(stopwatch, l =>
+                //     {
+                //       Console.Error.WriteLine("Time to process: {0}", stopwatch.Elapsed);
+                //       foreach (var result in l.OrderBy(x => x.record))
+                //         Console.Error.WriteLine(result);
+                //     });
+                var output = cc.Subscribe(l => { });
 
 
                 Console.Error.WriteLine("Connected components on a random graph ({0} nodes, {1} edges)",
@@ -287,7 +288,7 @@ namespace FaultToleranceExamples.ConnectedComponents
 
                 if (computation.Configuration.ProcessID == 0)
                 {
-                    //output.Sync(0);
+                    //computation.Sync(0);
                     //Console.WriteLine("Time post first sync {0}", stopwatch.ElapsedMilliseconds);
                     //stopwatch.Restart();
                     int j = 0;
@@ -303,20 +304,12 @@ namespace FaultToleranceExamples.ConnectedComponents
                         }
                         if (syncEachEpoch)
                         {
-                          output.Sync(curEpoch - 1);
+                          computation.Sync(curEpoch - 1);
                         }
                         edges.OnNext(changes);
                     }
-                    output.Sync(numEpochsToRun);
+                    computation.Sync(numEpochsToRun);
                     Console.WriteLine("Total time {0}", stopwatch.ElapsedMilliseconds);
-                }
-                else
-                {
-                  int curEpoch = 1;
-                  for (; curEpoch <= numEpochsToRun; curEpoch++)
-                  {
-                    edges.OnNext();
-                  }
                 }
                 edges.OnCompleted();
                 computation.Join();
