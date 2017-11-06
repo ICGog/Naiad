@@ -237,7 +237,6 @@ namespace Microsoft.Research.Naiad.Runtime.FaultTolerance
                     }
 
                     ++this.currentIndex;
-                    this.currentStream.Close();
                     this.currentStream.Dispose();
                     this.currentStream = this.parent.OpenReadStream(this.currentIndex);
                 }
@@ -260,7 +259,6 @@ namespace Microsoft.Research.Naiad.Runtime.FaultTolerance
 
             public override void Close()
             {
-                this.currentStream.Close();
                 this.currentStream.Dispose();
                 this.currentStream = null;
                 base.Close();
@@ -795,8 +793,10 @@ namespace Microsoft.Research.Naiad.Runtime.FaultTolerance
         /// <param name="stream">stream to flush</param>
         public void Flush(Stream stream)
         {
+          if (stream != null) {
             FileStream fStream = stream as FileStream;
             fStream.Flush(true);
+          }
         }
 
         /// <summary>
@@ -818,7 +818,6 @@ namespace Microsoft.Research.Naiad.Runtime.FaultTolerance
         public void Close(Stream stream)
         {
             stream.Flush();
-            stream.Close();
             stream.Dispose();
         }
 

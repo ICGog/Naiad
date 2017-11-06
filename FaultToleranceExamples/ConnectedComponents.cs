@@ -121,7 +121,7 @@ namespace FaultToleranceExamples.ConnectedComponents
         public void Execute(string[] args)
         {
             this.config = Configuration.FromArgs(ref args);
-            this.config.MaxLatticeInternStaleTimes = 100;
+//            this.config.MaxLatticeInternStaleTimes = 100;
             this.config.DefaultCheckpointInterval = 60000;
             bool syncEachEpoch = false;
             bool checkpointEagerly = false;
@@ -283,9 +283,10 @@ namespace FaultToleranceExamples.ConnectedComponents
 
                 computation.Activate();
                 Console.WriteLine("Initialized {0}", stopwatch.ElapsedMilliseconds);
-                edges.OnNext(computation.Configuration.ProcessID == 0 ? graph : Enumerable.Empty<IntPair>());
+//                edges.OnNext(computation.Configuration.ProcessID == 0 ? graph : Enumerable.Empty<IntPair>());
+                edges.OnNext(graph);
 
-                if (computation.Configuration.ProcessID == 0)
+//                if (computation.Configuration.ProcessID == 0)
                 {
                     output.Sync(0);
                     Console.WriteLine("Time post first sync {0}", stopwatch.ElapsedMilliseconds);
@@ -297,6 +298,7 @@ namespace FaultToleranceExamples.ConnectedComponents
                         List<Weighted<IntPair>> changes = new List<Weighted<IntPair>>();
                         for (int k = 0; k < changesPerEpoch; ++k, ++j)
                         {
+                          j = j % edgeCount;
                           changes.Add(new Weighted<IntPair>(graph[j], -1));
                           var newEdge = new IntPair(random.Next(nodeCount), random.Next(nodeCount));
                           changes.Add(new Weighted<IntPair>(newEdge, 1));
