@@ -378,11 +378,12 @@ namespace FaultToleranceExamples.YCSBOptimised
         long numIter = numElementsToGenerate / loadTargetHz * 1000 / timeSliceLengthMs;
         long beginWindow = getCurrentTime();
         long startTime = beginWindow;
-        Thread.Sleep((int)((beginWindow / 10000) * 10000 + 10000 - beginWindow));
-        beginWindow = (beginWindow / 10000) * 10000 + 10000;
+        Thread.Sleep((int)((beginWindow / 10000) * 10000 + 20000 - beginWindow));
+        beginWindow = (beginWindow / 10000) * 10000 + 20000;
         for (int epoch = 0; epoch < numIter; ++epoch) {
           List<Pair<int, long>> threadWindowInput = new List<Pair<int, long>>();
-          for (int threadIndex = 0; threadIndex < computation.Configuration.WorkerCount; ++threadIndex) {
+          int startIndex = computation.Configuration.ProcessID * computation.Configuration.WorkerCount;
+          for (int threadIndex = startIndex; threadIndex < startIndex + computation.Configuration.WorkerCount; ++threadIndex) {
               threadWindowInput.Add(threadIndex.PairWith(beginWindow));
           }
           windowInput.OnNext(threadWindowInput);
