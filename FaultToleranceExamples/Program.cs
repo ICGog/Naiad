@@ -64,6 +64,7 @@ namespace FaultToleranceExamples
       examples.Add("connected-components", new ConnectedComponents.ConnectedComponents());
       examples.Add("ycsb", new YCSB.YCSB());
       examples.Add("ycsbdd", new YCSBDD.YCSBDD());
+      examples.Add("ycsb-optimised", new YCSBOptimised.YCSBOptimised());
       if (args.Length == 0 || !examples.ContainsKey(args[0].ToLower()))
       {
         Console.Error.WriteLine("First argument not found in list of examples");
