@@ -54,14 +54,13 @@ namespace FaultToleranceExamples.YCSBOptimised
   {
 
     public static Stream<Pair<string, long>, T> AdVertex<T>(this Stream<long, T> stream,
-                                                            BatchedDataSource<Pair<string, long>> input,
                                                             string[] preparedAds,
                                                             long numEventsPerEpoch,
                                                             long timeSliceLengthMs,
                                                             Dictionary<string, string> adCampaign)
       where T : Time<T>
     {
-      return stream.NewUnaryStage<long, Pair<string, long>, T>((i, s) => new YCSBOptimised.AdVertex<T>(i, s, input, preparedAds, numEventsPerEpoch, timeSliceLengthMs, adCampaign), null, null, "AdVertex");
+      return stream.NewUnaryStage<long, Pair<string, long>, T>((i, s) => new YCSBOptimised.AdVertex<T>(i, s, preparedAds, numEventsPerEpoch, timeSliceLengthMs, adCampaign), null, null, "AdVertex");
     }
 
     public static Stream<long, T> RedisCampaignVertex<T>(this Stream<Pair<Pair<string, long>, long>, T> stream,
@@ -119,7 +118,6 @@ namespace FaultToleranceExamples.YCSBOptimised
       private DateTime dt1970;
       private Dictionary<T, Dictionary<string, long>> cache;
       private Dictionary<T, long> epochToTime;
-      private long windowDuration = 10000;
 
       public override void OnReceive(Microsoft.Research.Naiad.Dataflow.Message<Pair<Pair<string, long>, long>, T> message)
       {
@@ -176,7 +174,6 @@ namespace FaultToleranceExamples.YCSBOptimised
         long curTime = Convert.ToInt64(span.TotalMilliseconds);
         redisDB.HashIncrement(windowUUID, "seen_count", campaignCount);
         redisDB.HashSet(windowUUID, "time_updated", curTime.ToString());
-        redisDB.ListLeftPush("time_updated", curTime.ToString());
         return curTime - campaignTime;
       }
 
@@ -196,31 +193,27 @@ namespace FaultToleranceExamples.YCSBOptimised
       private string[] preparedAds;
       private int adsIdx;
       private long numEventsPerEpoch;
-      private BatchedDataSource<Pair<string, long>> input;
       private long timeSliceLengthMs;
       private int index;
-      private List<Pair<string, long>> adEvents;
 
       public override void OnReceive(Microsoft.Research.Naiad.Dataflow.Message<long, T> message)
       {
         Console.WriteLine("AdVertex received " + message.time + " bla " + index);
-        adEvents.Clear();
         string tailAd = message.payload[0] + "\",\"ip_address\":\"1.2.3.4\"}";
         long emitStartTime = getCurrentTime();
         Char[] splitter = new Char[] { '"' };
+        var output = this.Output.GetBufferForTime(message.time);
         for (int i = 0; i < this.numEventsPerEpoch; i++) {
           if (this.adsIdx == this.preparedAds.Length) {
             this.adsIdx = 0;
           }
-          //adEvents[i] = preparedAds[this.adsIdx++] + getCurrentTime() + "\",\"ip_address\":\"1.2.3.4\"}";
           var adEvent = (preparedAds[this.adsIdx++] + tailAd).Split(splitter);
           if (adEvent[19].Equals("view")) {
             string campaignId = adCampaign[adEvent[11]];
             long campaignTime = 10000 * (Convert.ToInt64(adEvent[23]) / 10000);
-            adEvents.Add(campaignId.PairWith(campaignTime));
+            output.Send(campaignId.PairWith(campaignTime));
           }
         }
-        input.OnNext(adEvents);
         long emitEndTime = getCurrentTime();
         if (emitEndTime - message.payload[0] > timeSliceLengthMs) {
           long behind = emitEndTime - message.payload[0] - timeSliceLengthMs;
@@ -229,18 +222,15 @@ namespace FaultToleranceExamples.YCSBOptimised
       }
 
       public AdVertex(int index, Stage<T> stage,
-                      BatchedDataSource<Pair<string, long>> input,
                       string[] preparedAds, long numEventsPerEpoch, long timeSliceLengthMs,
                       Dictionary<string, string> adCampaign) : base(index, stage)
       {
         this.index = index;
         this.adCampaign = adCampaign;
-        this.input = input;
         this.preparedAds = preparedAds;
         this.adsIdx = 0;
         this.numEventsPerEpoch = numEventsPerEpoch;
         this.timeSliceLengthMs = timeSliceLengthMs;
-        this.adEvents = new List<Pair<string, long>>();
       }
     }
 
@@ -355,15 +345,12 @@ namespace FaultToleranceExamples.YCSBOptimised
           }
         }
 
-        var batchedAdInput = new BatchedDataSource<Pair<string, long>>();
-        var batchedAdInputStream = computation.NewInput(batchedAdInput).SetCheckpointType(CheckpointType.CachingInput);//.SetCheckpointPolicy(s => new CheckpointEagerly());
         var windowInput = new BatchedDataSource<Pair<int, long>>();
         var windowInputStream = computation.NewInput(windowInput).SetCheckpointType(CheckpointType.StatelessLogEphemeral);//.PartitionBy(x => (int)(Convert.ToInt64(x) % 5));
 
-        windowInputStream.PartitionBy(x => x.First).Select(x => x.Second)
-          .AdVertex(batchedAdInput, eventGenerator.getPreparedAds(),
-                    numEventsPerEpoch, timeSliceLengthMs, adsToCampaign).SetCheckpointType(CheckpointType.StatelessLogEphemeral);
-        var campaignsTime = batchedAdInputStream
+        var campaignsTime = windowInputStream.PartitionBy(x => x.First).Select(x => x.Second)
+          .AdVertex(eventGenerator.getPreparedAds(), numEventsPerEpoch,
+                    timeSliceLengthMs, adsToCampaign).SetCheckpointType(CheckpointType.StatelessLogEphemeral)
           .Count().SetCheckpointType(CheckpointType.StatelessLogEphemeral)
           .RedisCampaignVertex(redis).SetCheckpointType(CheckpointType.StatelessLogEphemeral);
 
@@ -416,7 +403,6 @@ namespace FaultToleranceExamples.YCSBOptimised
         }
 
         windowInput.OnCompleted();
-        batchedAdInput.OnCompleted();
 
         computation.Join();
         if (computation.Configuration.ProcessID == 0 && enableFT)

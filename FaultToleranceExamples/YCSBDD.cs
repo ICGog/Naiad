@@ -294,12 +294,13 @@ namespace FaultToleranceExamples.YCSBDD
       public override void OnReceive(Microsoft.Research.Naiad.Dataflow.Message<long, T> message)
       {
         Console.WriteLine("AdVertex received " + message.time);
+        string tailAd = message.payload[0] + "\",\"ip_address\":\"1.2.3.4\"}";
         long emitStartTime = getCurrentTime();
         for (int i = 0; i < this.numEventsPerEpoch; i++) {
           if (this.adsIdx == this.preparedAds.Length) {
             this.adsIdx = 0;
           }
-          adEvents[i] = preparedAds[this.adsIdx++] + getCurrentTime() + "\",\"ip_address\":\"1.2.3.4\"}";
+          adEvents[i] = preparedAds[this.adsIdx++] + tailAd;
         }
         input.OnNext(adEvents);
         long emitEndTime = getCurrentTime();
@@ -350,7 +351,7 @@ namespace FaultToleranceExamples.YCSBDD
     public void Execute(string[] args)
     {
       this.config = Configuration.FromArgs(ref args);
-      this.config.MaxLatticeInternStaleTimes = 50;
+//      this.config.MaxLatticeInternStaleTimes = 50;
       this.config.DefaultCheckpointInterval = 1000;
 
       string ycsbConfigFile = "";
@@ -485,12 +486,13 @@ namespace FaultToleranceExamples.YCSBDD
         var adCollectionInput = computation.NewInputCollection<string>();
         var campaignTimeInput = computation.NewInputCollection<Pair<Pair<string, long>, long>>();
         //.SetCheckpointType(CheckpointType.CachingInput).SetCheckpointPolicy(s => new CheckpointEagerly());
-        var windowInput = new BatchedDataSource<long>();
+        var windowInput = new BatchedDataSource<Pair<int, long>>();
         var windowInputStream = computation.NewInput(windowInput).SetCheckpointType(CheckpointType.StatelessLogEphemeral);//.PartitionBy(x => (int)(Convert.ToInt64(x) % 5));
 
         if (!singleThreadGenerator) {
           if (lindiGenerator) {
-            windowInputStream.AdVertex(batchedAdInput, eventGenerator.getPreparedAds(), numEventsPerEpoch, timeSliceLengthMs).SetCheckpointType(CheckpointType.StatelessLogEphemeral);
+            windowInputStream.PartitionBy(x => x.First).Select(x => x.Second)
+              .AdVertex(batchedAdInput, eventGenerator.getPreparedAds(), numEventsPerEpoch / computation.Configuration.WorkerCount, timeSliceLengthMs).SetCheckpointType(CheckpointType.StatelessLogEphemeral);
             var campaignsTime = batchedAdInputStream
               .Select(jsonString => Newtonsoft.Json.JsonConvert.DeserializeObject<AdEvent>(jsonString)).SetCheckpointType(CheckpointType.StatelessLogEphemeral)
               .Where(adEvent => adEvent.event_type.Equals("view")).SetCheckpointType(CheckpointType.StatelessLogEphemeral)
@@ -544,11 +546,16 @@ namespace FaultToleranceExamples.YCSBDD
           long numIter = numElementsToGenerate / loadTargetHz * 1000 / timeSliceLengthMs;
           long beginWindow = getCurrentTime();
           long startTime = beginWindow;
-          Thread.Sleep((int)((beginWindow / 10000) * 10000 + 10000 - beginWindow));
-          beginWindow = (beginWindow / 10000) * 10000 + 10000;
+          Thread.Sleep((int)((beginWindow / 10000) * 10000 + 20000 - beginWindow));
+          beginWindow = (beginWindow / 10000) * 10000 + 20000;
           for (int epoch = 0; epoch < numIter; ++epoch) {
             if (lindiGenerator) {
-              windowInput.OnNext(beginWindow);
+              List<Pair<int, long>> threadWindowInput = new List<Pair<int, long>>();
+              int startIndex = computation.Configuration.ProcessID * computation.Configuration.WorkerCount;
+              for (int threadIndex = startIndex; threadIndex < startIndex + computation.Configuration.WorkerCount; ++threadIndex) {
+                threadWindowInput.Add(threadIndex.PairWith(beginWindow));
+              }
+              windowInput.OnNext(threadWindowInput);
             } else {
               adCollectionInput.OnNext(beginWindow.ToString());
             }

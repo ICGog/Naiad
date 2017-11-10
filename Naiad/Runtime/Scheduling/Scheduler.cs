@@ -121,6 +121,16 @@ namespace Microsoft.Research.Naiad.Scheduling
         }
 
         private List<ComputationState> computationStates = new List<ComputationState>();
+        private long otherTime = 0;
+        private long flushProgressTime = 0;
+        private long assesReachabilityTime = 0;
+        private long schedulerSleepTime = 0;
+        private long drainMailTime = 0;
+        private long checkMailTime = 0;
+        private long searchWorkItemTime = 0;
+        private long runWorkItemTime = 0;
+        private int numWorkItemsExecuted = 0;
+
         internal void RegisterGraph(InternalComputation internalComputation)
         {
             var success = false;
@@ -449,6 +459,10 @@ namespace Microsoft.Research.Naiad.Scheduling
                 // test pause event.
                 this.ConsiderPausing();
 
+                Stopwatch stopWatch = new Stopwatch();
+                Stopwatch fineStopWatch = new Stopwatch();
+                stopWatch.Start();
+
                 if (!this.isRestoring)
                 {
                     // check to see if any checkpoints finished being saved to stable storage
@@ -458,38 +472,67 @@ namespace Microsoft.Research.Naiad.Scheduling
                     for (int computationIndex = 0; computationIndex < this.computationStates.Count; computationIndex++)
                         this.TestComputationsForShutdown(computationIndex);
 
+                    fineStopWatch.Start();
                     // check all mailboxes with undifferentiated messages.
                     for (int computationIndex = 0; computationIndex < this.computationStates.Count; computationIndex++)
                         this.CheckMailboxesForComputation(computationIndex);
 
+                    fineStopWatch.Stop();
+                    checkMailTime += fineStopWatch.ElapsedTicks;
+
+                    fineStopWatch.Restart();
                     // push any pending messages to recipients, so that work-to-do is as current as possible.
                     for (int computationIndex = 0; computationIndex < this.computationStates.Count; computationIndex++)
                         didAnything = this.DrainMailboxesForComputation(computationIndex) || didAnything;
 
+                    fineStopWatch.Stop();
+                    drainMailTime += fineStopWatch.ElapsedTicks;
+
+                    fineStopWatch.Restart();
                     // periodically assesses global reachability.
                     didAnything = this.ConsiderAssessingGlobalReachability() || didAnything;
+                    fineStopWatch.Stop();
+                    assesReachabilityTime += fineStopWatch.ElapsedTicks;
 
+                    fineStopWatch.Restart();
                     // flush all computations and push progress tracking traffic out to other workers.
                     for (int computationIndex = 0; computationIndex < this.computationStates.Count; computationIndex++)
                         this.FlushProgressUpdatesForComputation(computationIndex);
+                    fineStopWatch.Stop();
+                    flushProgressTime += fineStopWatch.ElapsedTicks;
                 }
 
                 // accept work items from the shared queue.
                 dequeuedSharedItems += this.AcceptWorkItemsFromOthers();
 
+                stopWatch.Stop();
+                otherTime += stopWatch.ElapsedTicks;
+
                 // deliver notifications.
                 for (int computationIndex = 0; computationIndex < computationStates.Count; computationIndex++)
                     didAnything = this.RunNotification(computationIndex) || didAnything;
 
-                // if nothing ran, consider sleeping until more work arrives
-                if (!didAnything)
-                {
-                    int highWaterMark = this.Controller.Workers.DecrementSharedQueueCount(dequeuedSharedItems);
-                    dequeuedSharedItems = 0;
-                    this.ConsiderSleeping(highWaterMark);
-                }
-            }
+                stopWatch.Restart();
 
+                // // if nothing ran, consider sleeping until more work arrives
+                // if (!didAnything)
+                // {
+                //     int highWaterMark = this.Controller.Workers.DecrementSharedQueueCount(dequeuedSharedItems);
+                //     dequeuedSharedItems = 0;
+                //     this.ConsiderSleeping(highWaterMark);
+                // }
+                stopWatch.Stop();
+                schedulerSleepTime += stopWatch.ElapsedTicks;
+            }
+            Console.WriteLine("Scheduler drain mail time " + this.thread.Name + " " +  (drainMailTime / TimeSpan.TicksPerMillisecond));
+            Console.WriteLine("Scheduler check mail time " + this.thread.Name + " " + (checkMailTime / TimeSpan.TicksPerMillisecond));
+            Console.WriteLine("Scheduler sleep time " + this.thread.Name + " " + (schedulerSleepTime / TimeSpan.TicksPerMillisecond));
+            Console.WriteLine("Scheduler other time " + this.thread.Name + " " + (otherTime / TimeSpan.TicksPerMillisecond));
+            Console.WriteLine("Scheduler search work item " + this.thread.Name + " " + (this.searchWorkItemTime / TimeSpan.TicksPerMillisecond));
+            Console.WriteLine("Scheduler fine run work item " + this.thread.Name + " " + (this.runWorkItemTime / TimeSpan.TicksPerMillisecond));
+            Console.WriteLine("Scheduler flush progress time " + this.thread.Name + " " +  (flushProgressTime / TimeSpan.TicksPerMillisecond));
+            Console.WriteLine("Scheduler asses reachability time " + this.thread.Name + " " +  (assesReachabilityTime / TimeSpan.TicksPerMillisecond));
+            Console.WriteLine("Number of work items executed " + numWorkItemsExecuted);
             this.Controller.Workers.NotifySchedulerTerminating(this);            
         }
 
@@ -762,6 +805,8 @@ namespace Microsoft.Research.Naiad.Scheduling
             var workItems = this.computationStates[graphId].WorkItems;
             var itemToRun = workItems.Count;
 
+            Stopwatch stopWatch = new Stopwatch();
+
             if (this.isRestoring)
             {
                 for (int i = 0; itemToRun == workItems.Count && i < workItems.Count; i++)
@@ -774,6 +819,11 @@ namespace Microsoft.Research.Naiad.Scheduling
             }
             else
             {
+                 stopWatch.Start();
+                 // update the frontier, to keep things fresh-ish!
+                 var frontier = computation.ProgressTracker.GetInfoForWorker(this.Index).PointstampCountSet.Frontier;
+                 var local = this.computationStates[graphId].Producer.LocalPCS.Frontier;
+
                 // determine which item to run
                 for (int i = 0; i < workItems.Count; i++)
                 {
@@ -786,14 +836,10 @@ namespace Microsoft.Research.Naiad.Scheduling
                     if (itemToRun == workItems.Count || computation.Reachability.CompareTo(workItems[itemToRun].Capability, workItems[i].Capability) > 0)
                     {
                         var valid = false;
-
-                        // update the frontier, to keep things fresh-ish!
-                        var frontier = computation.ProgressTracker.GetInfoForWorker(this.Index).PointstampCountSet.Frontier;
-                        var local = this.computationStates[graphId].Producer.LocalPCS.Frontier;
+                        var dominated = false;
 
                         var v = workItems[i].Requirement;
 
-                        var dominated = false;
                         for (int j = 0; j < frontier.Length && !dominated; j++)
                             if (computation.Reachability.LessThan(frontier[j], v) && !frontier[j].Equals(v))
                                 dominated = true;
@@ -801,20 +847,23 @@ namespace Microsoft.Research.Naiad.Scheduling
                         for (int j = 0; j < local.Length && !dominated; j++)
                             if (computation.Reachability.LessThan(local[j], v) && !local[j].Equals(v))
                                 dominated = true;
-
                         valid = !dominated;
 
                         if (valid)
                         {
                             itemToRun = i;
+                            break;
                         }
                     }
                 }
+                stopWatch.Stop();
+                this.searchWorkItemTime += stopWatch.ElapsedTicks;
             }
 
             // execute identified work item.
             if (itemToRun < workItems.Count)
             {
+                stopWatch.Restart();
                 var item = workItems[itemToRun];
 
                 workItems[itemToRun] = workItems[workItems.Count - 1];
@@ -823,7 +872,7 @@ namespace Microsoft.Research.Naiad.Scheduling
                 this.Controller.Workers.NotifyVertexStarting(this, item);
                 NaiadTracing.Trace.StartSched(item);
                 //Tracing.Trace("[Sched " + this.Index + " " + item.ToString());
-
+                numWorkItemsExecuted++;
                 Schedule(item);
 
                 CheckpointTracker checkpointTracker = this.computationStates[graphId].InternalComputation.CheckpointTracker;
@@ -837,7 +886,8 @@ namespace Microsoft.Research.Naiad.Scheduling
                 this.Controller.Workers.NotifyVertexEnding(this, item);
 
                 this.computationStates[graphId].Producer.Start();   // tell everyone about records produced and consumed.
-
+                stopWatch.Stop();
+                this.runWorkItemTime += stopWatch.ElapsedTicks;
                 return true;
             }
             else
