@@ -514,13 +514,13 @@ namespace Microsoft.Research.Naiad.Scheduling
 
                 stopWatch.Restart();
 
-                // // if nothing ran, consider sleeping until more work arrives
-                // if (!didAnything)
-                // {
-                //     int highWaterMark = this.Controller.Workers.DecrementSharedQueueCount(dequeuedSharedItems);
-                //     dequeuedSharedItems = 0;
-                //     this.ConsiderSleeping(highWaterMark);
-                // }
+                // if nothing ran, consider sleeping until more work arrives
+                if (!didAnything)
+                {
+                    int highWaterMark = this.Controller.Workers.DecrementSharedQueueCount(dequeuedSharedItems);
+                    dequeuedSharedItems = 0;
+                    this.ConsiderSleeping(highWaterMark);
+                }
                 stopWatch.Stop();
                 schedulerSleepTime += stopWatch.ElapsedTicks;
             }
