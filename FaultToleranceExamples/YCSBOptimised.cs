@@ -116,20 +116,23 @@ namespace FaultToleranceExamples.YCSBOptimised
     {
       private IDatabase redisDB;
       private DateTime dt1970;
-      private Dictionary<T, Dictionary<string, long>> cache;
-      private Dictionary<T, long> epochToTime;
+      private Dictionary<int, Dictionary<string, long>> cache;
+      private Dictionary<int, long> epochToTime;
+      private int index;
 
       public override void OnReceive(Microsoft.Research.Naiad.Dataflow.Message<Pair<Pair<string, long>, long>, T> message)
       {
-//        Console.WriteLine("RedisCampaignVertex " + message.time);
+        Console.WriteLine("RedisCampaignVertex " + index + " received " + message.time);
         this.NotifyAt(message.time);
+        int epoch = message.time.ToPointstamp(index).Timestamp.a;
         for (int i = 0; i < message.length; i++) {
           string campaignId = message.payload[i].First.First;
           long campaignTime = message.payload[i].First.Second;
-          epochToTime[message.time] = campaignTime;
+          epochToTime[epoch] = campaignTime;
           long campaignCount = message.payload[i].Second;
+//          writeWindow(campaignId, campaignTime, campaignCount);
           Dictionary<string, long> campaignCache;
-          if (cache.TryGetValue(message.time, out campaignCache)) {
+          if (cache.TryGetValue(epoch, out campaignCache)) {
             long value;
             if (campaignCache.TryGetValue(campaignId, out value)) {
               campaignCache[campaignId] = value + campaignCount;
@@ -137,23 +140,43 @@ namespace FaultToleranceExamples.YCSBOptimised
               campaignCache[campaignId] = campaignCount;
             }
           } else {
-            cache[message.time] = new Dictionary<string, long>();
-            cache[message.time][campaignId] = campaignCount;
+            cache[epoch] = new Dictionary<string, long>();
+            cache[epoch][campaignId] = campaignCount;
           }
         }
       }
 
-      public override void OnNotify(T time)
+      // public override void OnNotify(T time)
+      // {
+      //   Console.WriteLine("RedisCampaignVertex " + index + " notify " + time);
+      //   int epoch = time.ToPointstamp(index).Timestamp.a;
+      //   long campaignTime;
+      //   if (epochToTime.TryGetValue(epoch, out campaignTime)) {
+      //     foreach (KeyValuePair<string, long> entry in cache[epoch]) {
+      //       writeWindow(entry.Key, campaignTime, entry.Value);
+      //     }
+      //     cache.Remove(epoch);
+      //     epochToTime.Remove(epoch);
+      //   }
+
+      //   base.OnNotify(time);
+      // }
+
+      public override void NotifyGarbageCollectionFrontier(Pointstamp[] frontier)
       {
-        long campaignTime;
-        if (epochToTime.TryGetValue(time, out campaignTime)) {
-          foreach (KeyValuePair<string, long> entry in cache[time]) {
-            writeWindow(entry.Key, campaignTime, entry.Value);
+        var epochsToRelease = frontier[0].Timestamp[0];
+        Console.WriteLine("RedisCampaignVertex " + index + " notify GC " + epochsToRelease);
+        var timesToRelease = this.epochToTime.Where(time => time.Key <= epochsToRelease).OrderBy(time => time.Key).ToArray();
+        foreach (var time in timesToRelease) {
+          long campaignTime;
+          if (epochToTime.TryGetValue(time.Key, out campaignTime)) {
+            foreach (KeyValuePair<string, long> entry in cache[time.Key]) {
+              writeWindow(entry.Key, campaignTime, entry.Value);
+            }
+            cache.Remove(time.Key);
+            epochToTime.Remove(time.Key);
           }
-          cache.Remove(time);
-          epochToTime.Remove(time);
         }
-        base.OnNotify(time);
       }
 
       private long writeWindow(String campaignId, long campaignTime, long campaignCount)
@@ -181,8 +204,9 @@ namespace FaultToleranceExamples.YCSBOptimised
       {
         redisDB = redis.GetDatabase();
         dt1970 = new DateTime(1970, 1, 1);
-        cache = new Dictionary<T, Dictionary<string, long>>();
-        epochToTime = new Dictionary<T, long>();
+        cache = new Dictionary<int, Dictionary<string, long>>();
+        epochToTime = new Dictionary<int, long>();
+        this.index = index;
       }
     }
 
@@ -198,7 +222,7 @@ namespace FaultToleranceExamples.YCSBOptimised
 
       public override void OnReceive(Microsoft.Research.Naiad.Dataflow.Message<long, T> message)
       {
-        Console.WriteLine("AdVertex received " + message.time + " bla " + index);
+        Console.WriteLine("AdVertex " + index + " received " + message.time);
         string tailAd = message.payload[0] + "\",\"ip_address\":\"1.2.3.4\"}";
         long emitStartTime = getCurrentTime();
         Char[] splitter = new Char[] { '"' };
@@ -346,13 +370,14 @@ namespace FaultToleranceExamples.YCSBOptimised
         }
 
         var windowInput = new BatchedDataSource<Pair<int, long>>();
-        var windowInputStream = computation.NewInput(windowInput).SetCheckpointType(CheckpointType.StatelessLogEphemeral);//.PartitionBy(x => (int)(Convert.ToInt64(x) % 5));
+        var windowInputStream = computation.NewInput(windowInput).SetCheckpointType(CheckpointType.CachingInput).SetCheckpointPolicy(s => new CheckpointEagerly());
 
-        var campaignsTime = windowInputStream.PartitionBy(x => x.First).Select(x => x.Second)
+        var campaignsTime = windowInputStream.PartitionBy(x => x.First).SetCheckpointType(CheckpointType.StatelessLogAll).SetCheckpointPolicy(c => new CheckpointEagerly())
+          .Select(x => x.Second).SetCheckpointType(CheckpointType.StatelessLogAll).SetCheckpointPolicy(c => new CheckpointEagerly())
           .AdVertex(eventGenerator.getPreparedAds(), numEventsPerEpoch,
-                    timeSliceLengthMs, adsToCampaign).SetCheckpointType(CheckpointType.StatelessLogEphemeral)
-          .Count().SetCheckpointType(CheckpointType.StatelessLogEphemeral)
-          .RedisCampaignVertex(redis).SetCheckpointType(CheckpointType.StatelessLogEphemeral);
+                    timeSliceLengthMs, adsToCampaign).SetCheckpointType(CheckpointType.StatelessLogAll).SetCheckpointPolicy(c => new CheckpointEagerly())
+          .Count().SetCheckpointType(CheckpointType.StatelessLogAll).SetCheckpointPolicy(c => new CheckpointEagerly())
+          .RedisCampaignVertex(redis).SetCheckpointType(CheckpointType.StatelessLogAll).SetCheckpointPolicy(c => new CheckpointEagerly());
 
         if (computation.Configuration.ProcessID == 0 && enableFT) {
           manager.Initialize(computation,
@@ -402,6 +427,7 @@ namespace FaultToleranceExamples.YCSBOptimised
           beginWindow += timeSliceLengthMs;
         }
 
+        Thread.Sleep(10000);
         windowInput.OnCompleted();
 
         computation.Join();
