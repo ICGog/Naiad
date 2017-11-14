@@ -122,7 +122,7 @@ namespace FaultToleranceExamples.YCSBOptimised
 
       public override void OnReceive(Microsoft.Research.Naiad.Dataflow.Message<Pair<Pair<string, long>, long>, T> message)
       {
-        Console.WriteLine("RedisCampaignVertex " + index + " received " + message.time);
+        Console.WriteLine(getCurrentTime() + " RedisCampaignVertex " + index + " received " + message.time);
         this.NotifyAt(message.time);
         int epoch = message.time.ToPointstamp(index).Timestamp.a;
         for (int i = 0; i < message.length; i++) {
@@ -148,7 +148,7 @@ namespace FaultToleranceExamples.YCSBOptimised
 
       // public override void OnNotify(T time)
       // {
-      //   Console.WriteLine("RedisCampaignVertex " + index + " notify " + time);
+      //   Console.WriteLine(getCurrentTime() + " RedisCampaignVertex " + index + " notify " + time);
       //   int epoch = time.ToPointstamp(index).Timestamp.a;
       //   long campaignTime;
       //   if (epochToTime.TryGetValue(epoch, out campaignTime)) {
@@ -165,7 +165,7 @@ namespace FaultToleranceExamples.YCSBOptimised
       public override void NotifyGarbageCollectionFrontier(Pointstamp[] frontier)
       {
         var epochsToRelease = frontier[0].Timestamp[0];
-        Console.WriteLine("RedisCampaignVertex " + index + " notify GC " + epochsToRelease);
+        Console.WriteLine(getCurrentTime() + " RedisCampaignVertex " + index + " notify GC " + epochsToRelease);
         var timesToRelease = this.epochToTime.Where(time => time.Key <= epochsToRelease).OrderBy(time => time.Key).ToArray();
         foreach (var time in timesToRelease) {
           long campaignTime;
@@ -222,7 +222,7 @@ namespace FaultToleranceExamples.YCSBOptimised
 
       public override void OnReceive(Microsoft.Research.Naiad.Dataflow.Message<long, T> message)
       {
-        Console.WriteLine("AdVertex " + index + " received " + message.time);
+        Console.WriteLine(getCurrentTime() + " AdVertex " + index + " received " + message.time);
         string tailAd = message.payload[0] + "\",\"ip_address\":\"1.2.3.4\"}";
         long emitStartTime = getCurrentTime();
         Char[] splitter = new Char[] { '"' };
@@ -376,7 +376,7 @@ namespace FaultToleranceExamples.YCSBOptimised
           .Select(x => x.Second).SetCheckpointType(CheckpointType.StatelessLogAll).SetCheckpointPolicy(c => new CheckpointEagerly())
           .AdVertex(eventGenerator.getPreparedAds(), numEventsPerEpoch,
                     timeSliceLengthMs, adsToCampaign).SetCheckpointType(CheckpointType.StatelessLogAll).SetCheckpointPolicy(c => new CheckpointEagerly())
-          .Count().SetCheckpointType(CheckpointType.StatelessLogAll).SetCheckpointPolicy(c => new CheckpointEagerly())
+          .Count(c => new CheckpointEagerly()).SetCheckpointType(CheckpointType.StatelessLogAll).SetCheckpointPolicy(c => new CheckpointEagerly())
           .RedisCampaignVertex(redis).SetCheckpointType(CheckpointType.StatelessLogAll).SetCheckpointPolicy(c => new CheckpointEagerly());
 
         if (computation.Configuration.ProcessID == 0 && enableFT) {
