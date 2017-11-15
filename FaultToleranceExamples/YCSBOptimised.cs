@@ -146,21 +146,51 @@ namespace FaultToleranceExamples.YCSBOptimised
         }
       }
 
-      // public override void OnNotify(T time)
-      // {
-      //   Console.WriteLine(getCurrentTime() + " RedisCampaignVertex " + index + " notify " + time);
-      //   int epoch = time.ToPointstamp(index).Timestamp.a;
-      //   long campaignTime;
-      //   if (epochToTime.TryGetValue(epoch, out campaignTime)) {
-      //     foreach (KeyValuePair<string, long> entry in cache[epoch]) {
-      //       writeWindow(entry.Key, campaignTime, entry.Value);
-      //     }
-      //     cache.Remove(epoch);
-      //     epochToTime.Remove(epoch);
-      //   }
+      public override void OnNotify(T time)
+      {
+        Console.WriteLine(getCurrentTime() + " RedisCampaignVertex " + index + " notify " + time);
+        // int epoch = time.ToPointstamp(index).Timestamp.a;
+        // long campaignTime;
+        // if (epochToTime.TryGetValue(epoch, out campaignTime)) {
+        //   foreach (KeyValuePair<string, long> entry in cache[epoch]) {
+        //     writeWindow(entry.Key, campaignTime, entry.Value);
+        //   }
+        //   cache.Remove(epoch);
+        //   epochToTime.Remove(epoch);
+        // }
+        // Console.WriteLine(getCurrentTime() + " RedisCampaignVertex " + index + " end notify " + time);
+        base.OnNotify(time);
+      }
 
-      //   base.OnNotify(time);
-      // }
+      protected override bool CanRollBackPreservingState(Pointstamp[] frontier)
+      {
+        return true;
+      }
+
+      protected override bool MustRollBackPreservingState(Pointstamp[] frontier)
+      {
+        return true;
+      }
+
+      public override void RollBackPreservingState(Pointstamp[] frontier, ICheckpoint<T> lastFullCheckpoint, ICheckpoint<T> lastIncrementalCheckpoint)
+      {
+        base.RollBackPreservingState(frontier, lastFullCheckpoint, lastIncrementalCheckpoint);
+        if (frontier.Length == 0) {
+          cache.Clear();
+          epochToTime.Clear();
+        } else {
+          if (frontier.Length != 1) {
+            throw new ApplicationException("Can only handle epochs");
+          }
+          int lastEpoch = frontier[0].Timestamp[0];
+          var toRemove = this.epochToTime.Keys.Where(epoch => epoch > lastEpoch).ToArray();
+          foreach (int epoch in toRemove) {
+            Console.WriteLine("Removing cached epoch " + epoch);
+            this.cache.Remove(epoch);
+            this.epochToTime.Remove(epoch);
+          }
+        }
+      }
 
       public override void NotifyGarbageCollectionFrontier(Pointstamp[] frontier)
       {
@@ -243,7 +273,14 @@ namespace FaultToleranceExamples.YCSBOptimised
           long behind = emitEndTime - message.payload[0] - timeSliceLengthMs;
           Console.WriteLine("Falling behind by " + behind + "ms while emitting " + numEventsPerEpoch + " events");
         }
+        Console.WriteLine(getCurrentTime() + " AdVertex " + index + " received end " + message.time);
       }
+
+      // public override void NotifyGarbageCollectionFrontier(Pointstamp[] frontier)
+      // {
+      //   var epochsToRelease = frontier[0].Timestamp[0];
+      //   Console.WriteLine(getCurrentTime() + " AdVertex " + index + " notify GC " + epochsToRelease);
+      // }
 
       public AdVertex(int index, Stage<T> stage,
                       string[] preparedAds, long numEventsPerEpoch, long timeSliceLengthMs,
@@ -372,12 +409,12 @@ namespace FaultToleranceExamples.YCSBOptimised
         var windowInput = new BatchedDataSource<Pair<int, long>>();
         var windowInputStream = computation.NewInput(windowInput).SetCheckpointType(CheckpointType.CachingInput).SetCheckpointPolicy(s => new CheckpointEagerly());
 
-        var campaignsTime = windowInputStream.PartitionBy(x => x.First).SetCheckpointType(CheckpointType.StatelessLogAll).SetCheckpointPolicy(c => new CheckpointEagerly())
-          .Select(x => x.Second).SetCheckpointType(CheckpointType.StatelessLogAll).SetCheckpointPolicy(c => new CheckpointEagerly())
+        var campaignsTime = windowInputStream.PartitionBy(x => x.First).SetCheckpointType(CheckpointType.Stateless).SetCheckpointPolicy(c => new CheckpointEagerly())
+          .Select(x => x.Second).SetCheckpointType(CheckpointType.Stateless).SetCheckpointPolicy(c => new CheckpointEagerly())
           .AdVertex(eventGenerator.getPreparedAds(), numEventsPerEpoch,
-                    timeSliceLengthMs, adsToCampaign).SetCheckpointType(CheckpointType.StatelessLogAll).SetCheckpointPolicy(c => new CheckpointEagerly())
-          .Count(c => new CheckpointEagerly()).SetCheckpointType(CheckpointType.StatelessLogAll).SetCheckpointPolicy(c => new CheckpointEagerly())
-          .RedisCampaignVertex(redis).SetCheckpointType(CheckpointType.StatelessLogAll).SetCheckpointPolicy(c => new CheckpointEagerly());
+                    timeSliceLengthMs, adsToCampaign).SetCheckpointType(CheckpointType.Stateless).SetCheckpointPolicy(c => new CheckpointEagerly())
+          .Count(c => new CheckpointEagerly()).SetCheckpointType(CheckpointType.Stateless).SetCheckpointPolicy(c => new CheckpointEagerly())
+          .RedisCampaignVertex(redis).SetCheckpointType(CheckpointType.Stateless).SetCheckpointPolicy(c => new CheckpointEagerly());
 
         if (computation.Configuration.ProcessID == 0 && enableFT) {
           manager.Initialize(computation,
