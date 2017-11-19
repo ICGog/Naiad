@@ -116,15 +116,15 @@ namespace FaultToleranceExamples.YCSBOptimised
     {
       private IDatabase redisDB;
       private DateTime dt1970;
-      private Dictionary<int, Dictionary<string, long>> cache;
-      private Dictionary<int, long> epochToTime;
+      private Dictionary<Pointstamp, Dictionary<string, long>> cache;
+      private Dictionary<Pointstamp, long> epochToTime;
       private int index;
 
       public override void OnReceive(Microsoft.Research.Naiad.Dataflow.Message<Pair<Pair<string, long>, long>, T> message)
       {
         Console.WriteLine(getCurrentTime() + " RedisCampaignVertex " + index + " received " + message.time);
         this.NotifyAt(message.time);
-        int epoch = message.time.ToPointstamp(index).Timestamp.a;
+        Pointstamp epoch = message.time.ToPointstamp(index);
         for (int i = 0; i < message.length; i++) {
           string campaignId = message.payload[i].First.First;
           long campaignTime = message.payload[i].First.Second;
@@ -149,7 +149,7 @@ namespace FaultToleranceExamples.YCSBOptimised
       public override void OnNotify(T time)
       {
         Console.WriteLine(getCurrentTime() + " RedisCampaignVertex " + index + " notify " + time);
-        // int epoch = time.ToPointstamp(index).Timestamp.a;
+        // Pointstamp epoch = time.ToPointstamp(index);
         // long campaignTime;
         // if (epochToTime.TryGetValue(epoch, out campaignTime)) {
         //   foreach (KeyValuePair<string, long> entry in cache[epoch]) {
@@ -179,13 +179,9 @@ namespace FaultToleranceExamples.YCSBOptimised
           cache.Clear();
           epochToTime.Clear();
         } else {
-          if (frontier.Length != 1) {
-            throw new ApplicationException("Can only handle epochs");
-          }
-          int lastEpoch = frontier[0].Timestamp[0];
-          var toRemove = this.epochToTime.Keys.Where(epoch => epoch > lastEpoch).ToArray();
-          foreach (int epoch in toRemove) {
-            Console.WriteLine("Removing cached epoch " + epoch);
+          Pointstamp lastEpoch = frontier[0];
+          var toRemove = this.epochToTime.Keys.Where(epoch => epoch.CompareTo(lastEpoch) > 0).ToArray();
+          foreach (var epoch in toRemove) {
             this.cache.Remove(epoch);
             this.epochToTime.Remove(epoch);
           }
@@ -194,9 +190,9 @@ namespace FaultToleranceExamples.YCSBOptimised
 
       public override void NotifyGarbageCollectionFrontier(Pointstamp[] frontier)
       {
-        var epochsToRelease = frontier[0].Timestamp[0];
+        var epochsToRelease = frontier[0];
         Console.WriteLine(getCurrentTime() + " RedisCampaignVertex " + index + " notify GC " + epochsToRelease);
-        var timesToRelease = this.epochToTime.Where(time => time.Key <= epochsToRelease).OrderBy(time => time.Key).ToArray();
+        var timesToRelease = this.epochToTime.Where(time => time.Key.CompareTo(epochsToRelease) <= 0).OrderBy(time => time.Key).ToArray();
         foreach (var time in timesToRelease) {
           long campaignTime;
           if (epochToTime.TryGetValue(time.Key, out campaignTime)) {
@@ -214,6 +210,10 @@ namespace FaultToleranceExamples.YCSBOptimised
         String cTimeStr = campaignTime.ToString();
         String windowUUID = redisDB.HashGet(campaignId, cTimeStr);
         if (windowUUID == null) {
+          // TODO(ionel): Should use a campaignId/cTimeStr seeded GUID generator, but
+          // there isn't one available in C#. This causes Redis counts to not be
+          // aggregated correctly. However, all ads are countet and flow through the
+          // system.
           windowUUID = System.Guid.NewGuid().ToString();
           redisDB.HashSet(campaignId, cTimeStr, windowUUID);
           String windowListUUID = redisDB.HashGet(campaignId, "windows");
@@ -234,8 +234,8 @@ namespace FaultToleranceExamples.YCSBOptimised
       {
         redisDB = redis.GetDatabase();
         dt1970 = new DateTime(1970, 1, 1);
-        cache = new Dictionary<int, Dictionary<string, long>>();
-        epochToTime = new Dictionary<int, long>();
+        cache = new Dictionary<Pointstamp, Dictionary<string, long>>();
+        epochToTime = new Dictionary<Pointstamp, long>();
         this.index = index;
       }
     }
@@ -406,7 +406,7 @@ namespace FaultToleranceExamples.YCSBOptimised
           }
         }
 
-        var windowInput = new BatchedDataSource<Pair<int, long>>();
+        var windowInput = new SubBatchDataSource<Pair<int, long>, Epoch>();
         var windowInputStream = computation.NewInput(windowInput).SetCheckpointType(CheckpointType.CachingInput).SetCheckpointPolicy(s => new CheckpointEagerly());
 
         var campaignsTime = windowInputStream.PartitionBy(x => x.First).SetCheckpointType(CheckpointType.Stateless).SetCheckpointPolicy(c => new CheckpointEagerly())
@@ -448,7 +448,7 @@ namespace FaultToleranceExamples.YCSBOptimised
               List<int> pauseLast = new List<int>();
               HashSet<int> failedProcesses = new HashSet<int>();
               failedProcesses.Add(1);
-              manager.FailProcess(failedProcesses, 0, 1);
+              manager.FailProcess(failedProcesses, 4000, 1);
               manager.PerformRollback(pauseImmediately,
                                       pauseAfterRecovery,
                                       pauseLast);
@@ -461,6 +461,8 @@ namespace FaultToleranceExamples.YCSBOptimised
           } else {
             Console.WriteLine("Falling behind by " + (-sleepTime) + " with epoch generation");
           }
+          if (epoch % 10 == 9)
+            windowInput.CompleteOuterBatch(new Epoch(epoch / 10));
           beginWindow += timeSliceLengthMs;
         }
 
