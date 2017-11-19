@@ -852,7 +852,7 @@ namespace Microsoft.Research.Naiad.Scheduling
                         if (valid)
                         {
                             itemToRun = i;
-                            break;
+//                            break;
                         }
                     }
                 }

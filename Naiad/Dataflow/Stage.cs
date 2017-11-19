@@ -672,7 +672,6 @@ namespace Microsoft.Research.Naiad.Dataflow
                 }
                 else
                 {
-                    oldVertices.Add(loc.VertexId, oldVertex);
 
                     var newVertex = this.factory(loc.VertexId, this);
                     this.vertices[loc.VertexId] = newVertex;
@@ -682,6 +681,7 @@ namespace Microsoft.Research.Naiad.Dataflow
                     {
                         action(newVertex);
                     }
+                    oldVertices.Add(loc.VertexId, newVertex);
                 }
             }
 
