@@ -117,6 +117,11 @@ namespace FaultToleranceExamples.YCSBDD
       return preparedAds;
     }
 
+    public string[] getAdIds()
+    {
+      return ads.ToArray();
+    }
+
     public void run(long numTasks, InputCollection<string> kafkaInput)
     {
       long elements = loadPerTimeslice(numTasks);

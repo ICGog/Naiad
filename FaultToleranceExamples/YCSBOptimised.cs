@@ -53,20 +53,20 @@ namespace FaultToleranceExamples.YCSBOptimised
   public static class ExtensionMethods
   {
 
-    public static Stream<string, T> AdGen<T>(this Stream<long, T> stream,
-                                             string[] preparedAds,
-                                             long numEventsPerEpoch,
-                                             long timeSliceLengthMs)
+    public static Stream<YCSBOptimised.AdEvent, T> AdGen<T>(this Stream<long, T> stream,
+                                              string[] adsIds,
+                                              long numEventsPerEpoch,
+                                              long timeSliceLengthMs)
       where T : Time<T>
     {
-      return stream.NewUnaryStage<long, string, T>((i, s) => new YCSBOptimised.AdGenVertex<T>(i, s, preparedAds, numEventsPerEpoch, timeSliceLengthMs), null, null, "AdGenVertex");
+      return stream.NewUnaryStage<long, YCSBOptimised.AdEvent, T>((i, s) => new YCSBOptimised.AdGenVertex<T>(i, s, adsIds, numEventsPerEpoch, timeSliceLengthMs), null, null, "AdGenVertex");
     }
 
-    public static Stream<Pair<string, long>, T> AdProc<T>(this Stream<string, T> stream,
+    public static Stream<Pair<string, long>, T> AdProc<T>(this Stream<YCSBOptimised.AdEvent, T> stream,
                                                           Dictionary<string, string> adCampaign)
       where T : Time<T>
     {
-      return stream.NewUnaryStage<string, Pair<string, long>, T>((i, s) => new YCSBOptimised.AdProcVertex<T>(i, s, adCampaign), null, null, "AdProcVertex");
+      return stream.NewUnaryStage<YCSBOptimised.AdEvent, Pair<string, long>, T>((i, s) => new YCSBOptimised.AdProcVertex<T>(i, s, adCampaign), null, null, "AdProcVertex");
     }
 
     public static Stream<Pair<string, long>, T> AdVertex<T>(this Stream<long, T> stream,
@@ -174,6 +174,8 @@ namespace FaultToleranceExamples.YCSBOptimised
         //   cache.Remove(epoch);
         //   epochToTime.Remove(epoch);
         // }
+        // if (epoch.Timestamp[1] > maxEpoch)
+        //   waitStable.Signal();
         // Console.WriteLine(getCurrentTime() + " RedisCampaignVertex " + index + " end notify " + time);
         base.OnNotify(time);
       }
@@ -257,10 +259,13 @@ namespace FaultToleranceExamples.YCSBOptimised
       }
     }
 
-    public class AdGenVertex<T> : UnaryVertex<long, string, T>
+    public class AdGenVertex<T> : UnaryVertex<long, YCSBOptimised.AdEvent, T>
       where T: Time<T>
     {
-      private string[] preparedAds;
+      private string pageID;
+      private string userID;
+      private string[] eventTypes = { "view", "click", "purchase" };
+      private string[] adsIds;
       private int adsIdx;
       private long numEventsPerEpoch;
       private long timeSliceLengthMs;
@@ -269,14 +274,19 @@ namespace FaultToleranceExamples.YCSBOptimised
       public override void OnReceive(Microsoft.Research.Naiad.Dataflow.Message<long, T> message)
       {
         Console.WriteLine(getCurrentTime() + " AdGenVertex " + index + " received " + message.time);
-        string tailAd = message.payload[0] + "\",\"ip_address\":\"1.2.3.4\"}";
         long emitStartTime = getCurrentTime();
         var output = this.Output.GetBufferForTime(message.time);
         for (int i = 0; i < this.numEventsPerEpoch; i++) {
-          if (this.adsIdx == this.preparedAds.Length) {
+          if (this.adsIdx == this.adsIds.Length) {
             this.adsIdx = 0;
           }
-          output.Send(preparedAds[this.adsIdx++] + tailAd);
+          output.Send(new AdEvent(userID,
+                                  pageID,
+                                  adsIds[this.adsIdx++],
+                                  "banner78",
+                                  eventTypes[adsIdx % eventTypes.Length],
+                                  message.payload[0],
+                                  "1.2.3.4"));
         }
         long emitEndTime = getCurrentTime();
         if (emitEndTime - message.payload[0] > timeSliceLengthMs) {
@@ -292,32 +302,33 @@ namespace FaultToleranceExamples.YCSBOptimised
       }
 
       public AdGenVertex(int index, Stage<T> stage,
-                         string[] preparedAds, long numEventsPerEpoch,
+                         string[] adsIds, long numEventsPerEpoch,
                          long timeSliceLengthMs) : base(index, stage)
       {
+        pageID = System.Guid.NewGuid().ToString();
+        userID = System.Guid.NewGuid().ToString();
         this.index = index;
-        this.preparedAds = preparedAds;
+        this.adsIds = adsIds;
         this.adsIdx = 0;
         this.numEventsPerEpoch = numEventsPerEpoch;
         this.timeSliceLengthMs = timeSliceLengthMs;
       }
     }
 
-    public class AdProcVertex<T> : UnaryVertex<string, Pair<string, long>, T>
+    public class AdProcVertex<T> : UnaryVertex<AdEvent, Pair<string, long>, T>
       where T: Time<T>
     {
       private Dictionary<string, string> adCampaign;
       private int index;
-      public override void OnReceive(Microsoft.Research.Naiad.Dataflow.Message<string, T> message)
+      public override void OnReceive(Microsoft.Research.Naiad.Dataflow.Message<AdEvent, T> message)
       {
 //        Console.WriteLine(getCurrentTime() + " AdProcVertex " + index + " received " + message.time);
         var output = this.Output.GetBufferForTime(message.time);
-        Char[] splitter = new Char[] { '"' };
         for (int i = 0; i < message.length; i++) {
-          var adEvent = message.payload[i].Split(splitter);
-          if (adEvent[19].Equals("view")) {
-            string campaignId = adCampaign[adEvent[11]];
-            long campaignTime = 10000 * (Convert.ToInt64(adEvent[23]) / 10000);
+          if (message.payload[i].event_type.Equals("view"))
+          {
+            string campaignId = adCampaign[message.payload[i].ad_id];
+            long campaignTime = 10000 * (message.payload[i].event_time / 10000);
             output.Send(campaignId.PairWith(campaignTime));
           }
         }
@@ -330,6 +341,54 @@ namespace FaultToleranceExamples.YCSBOptimised
         this.index = index;
         this.adCampaign = adCampaign;
       }
+    }
+
+    public struct AdEvent : IEquatable<AdEvent>
+    {
+      public string user_id;
+      public string page_id;
+      public string ad_id;
+      public string ad_type;
+      public string event_type;
+      public long event_time;
+      public string ip_address;
+
+      public AdEvent(string user_id, string page_id, string ad_id, string ad_type,
+                     string event_type, long event_time, string ip_address) {
+        this.user_id = user_id;
+        this.page_id = page_id;
+        this.ad_id = ad_id;
+        this.ad_type = ad_type;
+        this.event_type = event_type;
+        this.event_time = event_time;
+        this.ip_address = ip_address;
+      }
+
+      public bool Equals(AdEvent other)
+      {
+        return user_id.Equals(other.user_id) &&
+          page_id.Equals(other.page_id) &&
+          ad_id.Equals(other.ad_id) &&
+          ad_type.Equals(other.ad_type) &&
+          event_type.Equals(other.event_type) &&
+          event_time == other.event_time &&
+          ip_address.Equals(other.ip_address);
+      }
+
+      public override int GetHashCode()
+      {
+        return ad_id.GetHashCode() + 1234347 * event_type.GetHashCode() +
+          4311 * event_time.GetHashCode() + 31 * user_id.GetHashCode() +
+          17 * page_id.GetHashCode() + ad_type.GetHashCode() * 7 +
+          ip_address.GetHashCode();;
+      }
+
+      public override string ToString()
+      {
+        return user_id + " " + page_id + " " + ad_id + " " + ad_type + " " +
+          event_type + " " + event_time + " " + ip_address;
+      }
+
     }
 
     public class AdVertex<T> : UnaryVertex<long, Pair<string, long>, T>
@@ -508,7 +567,7 @@ namespace FaultToleranceExamples.YCSBOptimised
 
         var campaignsTime = windowInputStream.PartitionBy(x => x.First).SetCheckpointType(CheckpointType.Stateless).SetCheckpointPolicy(c => new CheckpointEagerly())
           .Select(x => x.Second).SetCheckpointType(CheckpointType.Stateless).SetCheckpointPolicy(c => new CheckpointEagerly())
-          .AdGen(eventGenerator.getPreparedAds(), numEventsPerEpoch, timeSliceLengthMs).SetCheckpointType(CheckpointType.Stateless).SetCheckpointPolicy(c => new CheckpointEagerly())
+          .AdGen(eventGenerator.getAdIds(), numEventsPerEpoch, timeSliceLengthMs).SetCheckpointType(CheckpointType.Stateless).SetCheckpointPolicy(c => new CheckpointEagerly())
           .AdProc(adsToCampaign).SetCheckpointType(CheckpointType.Stateless).SetCheckpointPolicy(c => new CheckpointEagerly())
 //          .AdVertex(eventGenerator.getPreparedAds(), numEventsPerEpoch,
 //                    timeSliceLengthMs, adsToCampaign).SetCheckpointType(CheckpointType.Stateless).SetCheckpointPolicy(c => new CheckpointEagerly())
@@ -530,6 +589,7 @@ namespace FaultToleranceExamples.YCSBOptimised
         long startTime = beginWindow;
         Thread.Sleep((int)((beginWindow / 10000) * 10000 + 10000 - beginWindow));
         beginWindow = (beginWindow / 10000) * 10000 + 10000;
+        bool failedProc = false;
         for (int epoch = 0; epoch < numIter; ++epoch) {
           List<Pair<int, long>> threadWindowInput = new List<Pair<int, long>>();
           int startIndex = computation.Configuration.ProcessID * computation.Configuration.WorkerCount;
@@ -539,7 +599,8 @@ namespace FaultToleranceExamples.YCSBOptimised
           windowInput.OnNext(threadWindowInput);
           if (computation.Configuration.ProcessID == 0 && enableFailure) {
             long sinceStart = getCurrentTime() - startTime;
-            if (sinceStart <= failAfterMs && beginWindow + timeSliceLengthMs - startTime >= failAfterMs) {
+            if (!failedProc && beginWindow + timeSliceLengthMs - startTime >= failAfterMs) {
+              failedProc = true;
               long sleepToFailureTime = failAfterMs - sinceStart;
               if (sleepToFailureTime > 0) {
                 Thread.Sleep((int)sleepToFailureTime);
@@ -549,14 +610,16 @@ namespace FaultToleranceExamples.YCSBOptimised
               List<int> pauseLast = new List<int>();
               HashSet<int> failedProcesses = new HashSet<int>();
               failedProcesses.Add(1);
-              manager.FailProcess(failedProcesses, 100, 1);
+              manager.FailProcess(failedProcesses, 1000, 1);
               manager.PerformRollback(pauseImmediately,
                                       pauseAfterRecovery,
                                       pauseLast);
+              //Thread.Sleep(250);
             }
           }
           waitStable.Wait();
           waitStable.Reset();
+          maxEpoch = epoch;
           long sleepTime = timeSliceLengthMs + beginWindow - getCurrentTime();
           if (sleepTime > 0) {
             Thread.Sleep((int)sleepTime);
@@ -579,6 +642,7 @@ namespace FaultToleranceExamples.YCSBOptimised
       }
     }
 
+    public static int maxEpoch = -1;
     public static CountdownEvent waitStable = null;
 
     public static DateTime dt1970 = new DateTime(1970, 1, 1);
