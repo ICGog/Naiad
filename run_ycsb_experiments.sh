@@ -1,4 +1,7 @@
 #!/bin/bash
+
+# IMPORTANT: Ensure ptp is setup in your cluster so that times are as synced as possible.
+
 for i in `seq 1 10` ; do
   cd ~/data-artisans-ycsb
   ./stream-bench.sh STOP_REDIS
