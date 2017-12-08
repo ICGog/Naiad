@@ -773,6 +773,48 @@ namespace Microsoft.Research.Naiad.Input
             this.currentSubBatch = 0;
         }
 
+        public void OnDataAtTime(IEnumerable<TRecord> batch, BatchIn<TTime> atTime)
+        {
+            if (this.inputsByWorker == null)
+                throw new InvalidOperationException("Cannot ingest data before the source has been connected.");
+            var array = batch == null ? new TRecord[] { } : batch.ToArray();
+            lock (this)
+            {
+                this.block.Wait();
+
+                if (this.currentSubBatch == int.MaxValue)
+                {
+                    throw new InvalidOperationException("Cannot add data after closing the current outer batch");
+                }
+
+                var arrayCursor = 0;
+                for (int i = 0; i < this.inputsByWorker.Length; i++)
+                {
+                    var toEat = (array.Length / this.inputsByWorker.Length) + ((i < (array.Length % this.inputsByWorker.Length)) ? 1 : 0);
+                    var chunk = new TRecord[toEat];
+
+                    Array.Copy(array, arrayCursor, chunk, 0, toEat);
+                    arrayCursor += toEat;
+
+                    this.inputsByWorker[i].OnStreamingRecv(chunk, atTime);
+                }
+            }
+        }
+
+        public void OnCompleteTime(BatchIn<TTime> atTime)
+        {
+            if (this.inputsByWorker == null)
+                throw new InvalidOperationException("Cannot ingest data before the source has been connected.");
+            lock (this)
+            {
+                this.block.Wait();
+                for (int i = 0; i < this.inputsByWorker.Length; i++)
+                {
+                    this.inputsByWorker[i].OnStreamingNotify(atTime);
+                }
+            }
+        }
+
         /// <summary>
         /// Introduces a batch of data for the next epoch.
         /// </summary>
