@@ -350,13 +350,7 @@ namespace Microsoft.Research.Naiad.Dataflow
         {
             Pointstamp p = t.ToPointstamp(this.vertex.Stage.StageId);
             //Console.WriteLine("Notified {0}", p);
-            for (int i=1; i<p.Timestamp.Length; ++i)
-            {
-                if (p.Timestamp[i] != Int32.MaxValue - 1) {
-                    throw new ApplicationException("Unexpected notify " + p.ToString());
-                }
-            }
-            int releaseEpoch = p.Timestamp.a + 1;
+            int releaseEpoch = p.Timestamp.b + 1;
             List<Pair<Message<S, T>, ReturnAddress>> buffer = null;
             bool removed = false;
             if (this.buffered.ContainsKey(releaseEpoch))
@@ -373,7 +367,7 @@ namespace Microsoft.Research.Naiad.Dataflow
             else
             {
                 this.currentEpoch = releaseEpoch;
-                p.Timestamp.a = releaseEpoch;
+                p.Timestamp.b = releaseEpoch;
                 this.MakeNonSelectiveNotification(p);
             }
 
@@ -396,7 +390,7 @@ namespace Microsoft.Research.Naiad.Dataflow
                     }
                     message.Release(AllocationReason.PostOfficeChannel, this.BufferPool);
                 }
-                p.Timestamp.a = releaseEpoch;
+                p.Timestamp.b = releaseEpoch;
 //                Console.WriteLine("Updating holds -1 for {0} {1}", p, releaseEpoch);
 //                this.vertex.UpdateHoldsForFrontier(FTFrontier.FromPointstamps(new Pointstamp[]{p}), -1);
             }
@@ -405,6 +399,7 @@ namespace Microsoft.Research.Naiad.Dataflow
 
         public override void OnReceive(Message<S, T> message, ReturnAddress from)
         {
+          // XXX(ionel): IMPORTANT!!! I'm buffering by subBatch (inner time), not epoch!
           Pointstamp myp = message.time.ToPointstamp(this.vertex.Stage.StageId);
 //          Console.WriteLine("Received {0} {1} {2}", myp, from.StageID, from.VertexID);
           if (this.nonSelective)
@@ -417,24 +412,15 @@ namespace Microsoft.Research.Naiad.Dataflow
                         throw new ApplicationException("Buffered entries");
                     }
 
-                    this.currentEpoch = p.Timestamp.a;
-                    for (int i = 1; i < p.Timestamp.Length; ++i)
-                    {
-                        p.Timestamp[i] = Int32.MaxValue - 1;
-                    }
+                    this.currentEpoch = p.Timestamp.b;
                     this.MakeNonSelectiveNotification(p);
                 }
-                else if (this.currentEpoch < p.Timestamp.a)
+                else if (this.currentEpoch < p.Timestamp.b)
                 {
-                    if (!buffered.ContainsKey(p.Timestamp.a))
+                    if (!buffered.ContainsKey(p.Timestamp.b))
                     {
-                        buffered[p.Timestamp.a] = new List<Pair<Message<S, T>, ReturnAddress>>();
+                        buffered[p.Timestamp.b] = new List<Pair<Message<S, T>, ReturnAddress>>();
 //                        Console.WriteLine("Updating holds +1 for {0}", p);
-                        Pointstamp tp = message.time.ToPointstamp(this.vertex.Stage.StageId);
-                        for (int i = 1; i < p.Timestamp.Length; ++i)
-                        {
-                            tp.Timestamp[i] = Int32.MaxValue - 1;
-                        }
 //                        this.vertex.UpdateHoldsForFrontier(FTFrontier.FromPointstamps(new Pointstamp[]{tp}), 1);
 //                        this.MakeNonSelectiveNotification(p);
                     }
@@ -442,7 +428,7 @@ namespace Microsoft.Research.Naiad.Dataflow
                     newMessage.Allocate(AllocationReason.PostOfficeChannel, this.BufferPool);
                     Array.Copy(message.payload, newMessage.payload, message.length);
                     newMessage.length = message.length;
-                    buffered[p.Timestamp.a].Add(newMessage.PairWith(from));
+                    buffered[p.Timestamp.b].Add(newMessage.PairWith(from));
                     //Console.WriteLine("Bufferring {0} {1}", p, buffered.Count);
                     //buffered[p.Timestamp.a].Add(message.PairWith(from));
                     return;
@@ -451,7 +437,7 @@ namespace Microsoft.Research.Naiad.Dataflow
                 {
                     if (this.currentEpoch != p.Timestamp[0])
                     {
-                        throw new ApplicationException("Out of order");
+//                        throw new ApplicationException("Out of order");
                     }
                 }
             }
