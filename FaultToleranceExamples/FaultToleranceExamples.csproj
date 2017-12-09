@@ -116,6 +116,7 @@
     <Compile Include="ComplexFTWorkflow.cs" />
     <Compile Include="YCSB.cs" />
     <Compile Include="YCSBOptimised.cs" />
+    <Compile Include="YCSBSelective.cs" />
     <Compile Include="YCSBEventGenerator.cs" />
     <Compile Include="KafkaConsumer.cs" />
     <Compile Include="MicroUpdateFrontiers.cs" />
