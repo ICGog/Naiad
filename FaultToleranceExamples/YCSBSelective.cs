@@ -157,18 +157,20 @@ namespace FaultToleranceExamples.YCSBSelective
       public override void OnNotify(T time)
       {
         Console.WriteLine(getCurrentTime() + " RedisCampaignVertex " + index + " notify " + time);
-        // Pointstamp epoch = time.ToPointstamp(index);
-        // long campaignTime;
-        // if (epochToTime.TryGetValue(epoch, out campaignTime)) {
-        //   foreach (KeyValuePair<string, long> entry in cache[epoch]) {
-        //     writeWindow(entry.Key, campaignTime, entry.Value);
-        //   }
-        //   cache.Remove(epoch);
-        //   epochToTime.Remove(epoch);
-        // }
-        // if (epoch.Timestamp[1] > maxEpoch)
-        //   waitStable.Signal();
-        // Console.WriteLine(getCurrentTime() + " RedisCampaignVertex " + index + " end notify " + time);
+        if (!exactlyOnce) {
+          Pointstamp epoch = time.ToPointstamp(index);
+          long campaignTime;
+          if (epochToTime.TryGetValue(epoch, out campaignTime)) {
+            foreach (KeyValuePair<string, long> entry in cache[epoch]) {
+              writeWindow(entry.Key, campaignTime, entry.Value);
+            }
+            cache.Remove(epoch);
+            epochToTime.Remove(epoch);
+          }
+          if (epoch.Timestamp[1] > maxEpoch)
+            waitStable.Signal();
+        }
+        Console.WriteLine(getCurrentTime() + " RedisCampaignVertex " + index + " end notify " + time);
         base.OnNotify(time);
       }
 
@@ -200,20 +202,22 @@ namespace FaultToleranceExamples.YCSBSelective
 
       public override void NotifyGarbageCollectionFrontier(Pointstamp[] frontier)
       {
-        var epochsToRelease = frontier[0];
-        Console.WriteLine(getCurrentTime() + " RedisCampaignVertex " + index + " notify GC " + epochsToRelease);
-        var timesToRelease = this.epochToTime.Where(time => time.Key.CompareTo(epochsToRelease) <= 0).OrderBy(time => time.Key).ToArray();
-        foreach (var time in timesToRelease) {
-          long campaignTime;
-          if (epochToTime.TryGetValue(time.Key, out campaignTime)) {
-            foreach (KeyValuePair<string, long> entry in cache[time.Key]) {
-              writeWindow(entry.Key, campaignTime, entry.Value);
+        if (exactlyOnce) {
+          var epochsToRelease = frontier[0];
+          Console.WriteLine(getCurrentTime() + " RedisCampaignVertex " + index + " notify GC " + epochsToRelease);
+          var timesToRelease = this.epochToTime.Where(time => time.Key.CompareTo(epochsToRelease) <= 0).OrderBy(time => time.Key).ToArray();
+          foreach (var time in timesToRelease) {
+            long campaignTime;
+            if (epochToTime.TryGetValue(time.Key, out campaignTime)) {
+              foreach (KeyValuePair<string, long> entry in cache[time.Key]) {
+                writeWindow(entry.Key, campaignTime, entry.Value);
+              }
+              cache.Remove(time.Key);
+              epochToTime.Remove(time.Key);
+              waitStable.Signal();
             }
-            cache.Remove(time.Key);
-            epochToTime.Remove(time.Key);
           }
         }
-//        waitStable.Signal();
       }
 
       private long writeWindow(String campaignId, long campaignTime, long campaignCount)
@@ -288,16 +292,6 @@ namespace FaultToleranceExamples.YCSBSelective
                                     message.payload[index],
                                     "1.2.3.4"));
           }
-          // long emitEndTime = getCurrentTime();
-          // if (emitEndTime - message.payload[index] > timeSliceLengthMs) {
-          //   long behind = emitEndTime - message.payload[index] - timeSliceLengthMs;
-          //   Console.WriteLine("Falling behind by " + behind + "ms while emitting " + numEventsPerEpoch + " events");
-          // }
-          // long waitT = message.payload[index] + timeSliceLengthMs - emitEndTime;
-          // Console.WriteLine("AdGenVertex sleep " + message.payload[index] + " " + waitT);
-          // if (waitT > 0) {
-          //   Thread.Sleep((int)(waitT));
-          // }
           called++;
         }
         Console.WriteLine(getCurrentTime() + " AdGenVertex " + index + " received end " + message.time);
@@ -411,6 +405,8 @@ namespace FaultToleranceExamples.YCSBSelective
       long timeSliceLengthMs = 1000;
       long numElementsToGenerate = 60L * loadTargetHz;
       bool enableFT = false;
+      bool nonSelective = false;
+      long delayEachEpoch = -1;
       int i = 1;
       while (i < args.Length)
       {
@@ -450,6 +446,18 @@ namespace FaultToleranceExamples.YCSBSelective
           break;
         case "-ft":
           enableFT = true;
+          i++;
+          break;
+        case "-nonselective":
+          nonSelective = true;
+          i++;
+          break;
+        case "-delayeachepoch":
+          delayEachEpoch = Int64.Parse(args[i + 1]);
+          i += 2;
+          break;
+        case "-exactlyonce":
+          exactlyOnce = true;
           i++;
           break;
         default:
@@ -521,7 +529,7 @@ namespace FaultToleranceExamples.YCSBSelective
         bool failedProc = false;
         Epoch outerBatch = new Epoch(0);
         int currentSubBatch = 0;
-        int delayAtEpoch = 12;
+        int delayAtEpoch = 30;
         for (int epoch = 0; epoch < numIter; ++epoch) {
           List<Pair<int, long>> threadWindowInput = new List<Pair<int, long>>();
           int startIndex = computation.Configuration.ProcessID * computation.Configuration.WorkerCount;
@@ -529,7 +537,11 @@ namespace FaultToleranceExamples.YCSBSelective
               threadWindowInput.Add(threadIndex.PairWith(beginWindow));
           }
           BatchIn<Epoch> currentTime = new BatchIn<Epoch>(outerBatch, currentSubBatch);
-          windowInput.OnDataAtTime(threadWindowInput, currentTime);
+          if (!nonSelective ||
+              (delayEachEpoch == -1 && epoch != delayAtEpoch) ||
+              (delayEachEpoch != -1 && (epoch % delayEachEpoch != (delayEachEpoch - 1) || epoch < 20))) {
+            windowInput.OnDataAtTime(threadWindowInput, currentTime);
+          }
           long sleepTime = 400 + beginWindow - getCurrentTime();
           if (sleepTime > 0) {
             Thread.Sleep((int)sleepTime);
@@ -537,7 +549,8 @@ namespace FaultToleranceExamples.YCSBSelective
             Console.WriteLine("Falling behind by " + (-sleepTime) + " with first input");
           }
 
-          if (epoch == delayAtEpoch) {
+          if ((delayEachEpoch == -1 && epoch == delayAtEpoch) ||
+              (delayEachEpoch != -1 && epoch % delayEachEpoch == (delayEachEpoch - 1) && epoch >= 20)) {
             List<Pair<int, long>> prevThreadWindowInput = new List<Pair<int, long>>();
             startIndex = computation.Configuration.ProcessID * computation.Configuration.WorkerCount;
             for (int threadIndex = startIndex; threadIndex < startIndex + computation.Configuration.WorkerCount; ++threadIndex) {
@@ -546,22 +559,33 @@ namespace FaultToleranceExamples.YCSBSelective
             BatchIn<Epoch> previousTime = new BatchIn<Epoch>(outerBatch, currentSubBatch - 1);
             windowInput.OnDataAtTime(prevThreadWindowInput, previousTime);
             windowInput.OnCompleteTime(previousTime);
+            waitStable.Wait();
+            waitStable.Reset();
+            maxEpoch = epoch - 1;
+            if (nonSelective) {
+              windowInput.OnDataAtTime(threadWindowInput, currentTime);
+            }
           }
 
+          sleepTime = 500 + beginWindow - getCurrentTime();
+          if (sleepTime > 0) {
+            Thread.Sleep((int)sleepTime);
+          }
           windowInput.OnDataAtTime(threadWindowInput, currentTime);
-          sleepTime = 800 + beginWindow - getCurrentTime();
+          sleepTime = timeSliceLengthMs + beginWindow - getCurrentTime();
           if (sleepTime > 0) {
             Thread.Sleep((int)sleepTime);
           } else {
             Console.WriteLine("Falling behind by " + (-sleepTime) + " with second input");
           }
-          if (epoch + 1 != delayAtEpoch)
+          if ((delayEachEpoch == -1 && epoch + 1 != delayAtEpoch) ||
+              (delayEachEpoch != -1 && ((epoch + 1) % delayEachEpoch != (delayEachEpoch - 1) || epoch < 20))) {
             windowInput.OnCompleteTime(currentTime);
+            waitStable.Wait();
+            waitStable.Reset();
+            maxEpoch = epoch;
+          }
           currentSubBatch++;
-//          windowInput.OnNext(threadWindowInput);
-//          waitStable.Wait();
-//          waitStable.Reset();
-          maxEpoch = epoch;
           sleepTime = timeSliceLengthMs + beginWindow - getCurrentTime();
           if (sleepTime > 0) {
             Thread.Sleep((int)sleepTime);
@@ -582,6 +606,7 @@ namespace FaultToleranceExamples.YCSBSelective
       }
     }
 
+    public static bool exactlyOnce = false;
     public static int maxEpoch = -1;
     public static CountdownEvent waitStable = null;
 
